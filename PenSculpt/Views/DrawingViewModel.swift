@@ -95,7 +95,18 @@ class DrawingViewModel {
         cancelLasso()
         let prior = selectedStrokeIDs
         selectionBeforeGrow = prior
-        let session = GrowStrategy.start(origin: origin, mode: .add, candidatePool: canvas.strokes)
+
+        let mode: GrowMode = {
+            if let seedID = origin.initialStrokeID, prior.contains(seedID) {
+                return .subtract
+            }
+            return .add
+        }()
+        let candidatePool: [Stroke] = (mode == .subtract)
+            ? canvas.strokes.filter { prior.contains($0.id) }
+            : canvas.strokes
+
+        let session = GrowStrategy.start(origin: origin, mode: mode, candidatePool: candidatePool)
         growSession = session
         // Reflect the initial admission in the highlight layer so the user
         // immediately sees what's being captured.
@@ -106,7 +117,7 @@ class DrawingViewModel {
             includedStrokeIDs: session.includedStrokeIDs,
             nextCandidateID: session.nextCandidateID,
             isPaused: session.isPaused,
-            mode: session.mode
+            mode: mode
         )
         startDisplayLink()
     }

@@ -306,4 +306,95 @@ final class DrawingViewModelTests: XCTestCase {
         XCTAssertEqual(vm.selectedStrokeIDs, [priorID, growID],
                        "finalize commits prior ∪ grown")
     }
+
+    func testGrowSubtractRemovesSeedFromSelection() {
+        // Long-press on an already-selected stroke must subtract: the seed
+        // comes out of the selection immediately.
+        let vm = makeVM()
+        let keepID = UUID()
+        let keep = Stroke(id: keepID, points: [
+            StrokePoint(location: CGPoint(x: 1000, y: 1000), pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        let removeID = UUID()
+        let remove = Stroke(id: removeID, points: [
+            StrokePoint(location: .zero, pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        vm.canvas.strokes = [keep, remove]
+        vm.selectedStrokeIDs = [keepID, removeID]
+
+        vm.handleGrowGestureStarted(origin: .stroke(strokeID: removeID, anchor: .zero))
+        XCTAssertEqual(vm.selectedStrokeIDs, [keepID],
+                       "subtract removes the seed from the live selection")
+
+        vm.handleGrowGestureEnded()
+        XCTAssertEqual(vm.selectedStrokeIDs, [keepID],
+                       "finalize commits the difference")
+    }
+
+    func testGrowSubtractRestrictsPoolToSelected() {
+        // A non-selected stroke between the seed and another selected one
+        // must NOT block or be touched by the subtract halo.
+        let vm = makeVM()
+        let aID = UUID()
+        let bID = UUID()
+        let outsiderID = UUID()
+        let a = Stroke(id: aID, points: [
+            StrokePoint(location: .zero, pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        let outsider = Stroke(id: outsiderID, points: [
+            StrokePoint(location: CGPoint(x: 5, y: 0), pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        let b = Stroke(id: bID, points: [
+            StrokePoint(location: CGPoint(x: 10, y: 0), pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        vm.canvas.strokes = [a, outsider, b]
+        vm.selectedStrokeIDs = [aID, bID]  // outsider is NOT selected
+
+        vm.handleGrowGestureStarted(origin: .stroke(strokeID: aID, anchor: .zero))
+        guard let session = vm.growSession else {
+            return XCTFail("Session not created")
+        }
+        XCTAssertEqual(session.mode, .subtract)
+        XCTAssertEqual(Set(session.candidatePool.map { $0.id }), [aID, bID],
+                       "candidatePool must exclude non-selected strokes")
+    }
+
+    func testGrowAddOnEmptySpaceWithPriorSelection() {
+        // Long-press on empty space with prior selection → add mode (not
+        // subtract, since origin has no initialStrokeID).
+        let vm = makeVM()
+        let priorID = UUID()
+        let prior = Stroke(id: priorID, points: [
+            StrokePoint(location: CGPoint(x: 1000, y: 1000), pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        vm.canvas.strokes = [prior]
+        vm.selectedStrokeIDs = [priorID]
+
+        vm.handleGrowGestureStarted(origin: .point(.zero))
+        XCTAssertEqual(vm.growSession?.mode, .add,
+                       "empty-space origin must be add mode regardless of prior selection")
+        XCTAssertTrue(vm.selectedStrokeIDs.contains(priorID),
+                      "prior selection must be preserved during the hold")
+    }
+
+    func testGrowSubtractCancelRevertsToPriorSelection() {
+        let vm = makeVM()
+        let aID = UUID()
+        let bID = UUID()
+        let a = Stroke(id: aID, points: [
+            StrokePoint(location: .zero, pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        let b = Stroke(id: bID, points: [
+            StrokePoint(location: CGPoint(x: 1000, y: 1000), pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        vm.canvas.strokes = [a, b]
+        vm.selectedStrokeIDs = [aID, bID]
+
+        vm.handleGrowGestureStarted(origin: .stroke(strokeID: aID, anchor: .zero))
+        XCTAssertEqual(vm.selectedStrokeIDs, [bID], "seed removed during hold")
+
+        vm.handleGrowGestureCancelled()
+        XCTAssertEqual(vm.selectedStrokeIDs, [aID, bID],
+                       "cancel restores the full pre-grow selection")
+    }
 }
