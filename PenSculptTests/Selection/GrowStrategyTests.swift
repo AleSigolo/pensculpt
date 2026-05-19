@@ -228,4 +228,48 @@ final class GrowStrategyTests: XCTestCase {
         let secondCall = session.finalize()
         XCTAssertEqual(finalized, secondCall)
     }
+
+    // MARK: subtract mode
+
+    func testSubtractModeAdmitsSeedImmediately() {
+        let id = UUID()
+        let seed = stroke(at: [CGPoint(x: 100, y: 100)], id: id)
+        let session = GrowStrategy.start(
+            origin: .stroke(strokeID: id, anchor: CGPoint(x: 100, y: 100)),
+            mode: .subtract,
+            candidatePool: [seed]
+        )
+        XCTAssertEqual(session.mode, .subtract)
+        XCTAssertTrue(session.includedStrokeIDs.contains(id),
+                      "Subtract mode marks the seed for removal at t=0")
+    }
+
+    func testSubtractModePoolRestrictsAdmission() {
+        // Strokes outside the candidatePool can never be admitted, no matter
+        // how big the radius grows.
+        let inPool = stroke(at: [CGPoint(x: 10, y: 0)])
+        let outOfPool = stroke(at: [CGPoint(x: 12, y: 0)])
+        let session = GrowStrategy.start(
+            origin: .point(.zero),
+            mode: .subtract,
+            candidatePool: [inPool]  // outOfPool deliberately omitted
+        )
+        for _ in 0..<600 {
+            _ = session.tick(deltaTime: 1.0 / 60.0)
+        }
+        XCTAssertTrue(session.includedStrokeIDs.contains(inPool.id),
+                      "Stroke inside the pool is reachable")
+        XCTAssertFalse(session.includedStrokeIDs.contains(outOfPool.id),
+                       "Stroke outside the pool must never be admitted")
+    }
+
+    func testGrowFrameCarriesMode() {
+        let session = GrowStrategy.start(
+            origin: .point(.zero),
+            mode: .subtract,
+            candidatePool: []
+        )
+        let frame = session.tick(deltaTime: 1.0 / 60.0)
+        XCTAssertEqual(frame.mode, .subtract)
+    }
 }
