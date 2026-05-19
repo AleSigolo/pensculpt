@@ -18,6 +18,7 @@ enum TooltipID: String, CaseIterable {
 
     // Drawing — overlay
     case toolbarCollapse
+    case deselect
 
     // Drawing — nav bar
     case modeToggle
@@ -54,6 +55,7 @@ enum TooltipID: String, CaseIterable {
         case .clear:              return .init(title: "Clear", subtitle: "Remove all strokes from the canvas")
         case .exportImage:        return .init(title: "Share", subtitle: "Export the drawing as an image")
         case .toolbarCollapse:    return .init(title: "Toolbar", subtitle: "Show or hide the drawing toolbar")
+        case .deselect:           return .init(title: "Deselect", subtitle: "Clear the current stroke selection")
         case .modeToggle:         return .init(title: "Selection mode", subtitle: "Drag to lasso · Hold to grow selection")
         case .autosaveToggle:     return .init(title: "Autosave", subtitle: "Save changes automatically as you draw")
         case .save:               return .init(title: "Save", subtitle: nil)
