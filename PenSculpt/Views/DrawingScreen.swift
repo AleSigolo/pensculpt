@@ -29,7 +29,7 @@ struct DrawingScreen: View {
             growthVisualizationLayer
             selectModeOverlay
             if vm.appMode == .draw { drawModeControls }
-            if vm.appMode == .select && vm.hasSelection { sculptButton }
+            if vm.appMode == .select && vm.hasSelection { selectionActionBar }
         }
         .overlay(alignment: .top) { savedMessageOverlay }
         .fullScreenCover(isPresented: $vm.showSculptScreen, onDismiss: projectSurfaceStrokes) {
@@ -124,14 +124,28 @@ struct DrawingScreen: View {
         }
     }
 
-    private var sculptButton: some View {
-        Button { vm.showSculptScreen = true } label: {
-            Label("Sculpt", systemImage: "cube")
-                .font(.headline)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(.blue, in: Capsule())
-                .foregroundStyle(.white)
+    private var selectionActionBar: some View {
+        HStack(spacing: 16) {
+            Button {
+                vm.clearSelection()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .foregroundStyle(.primary)
+            }
+            .tooltip(.deselect)
+
+            Button { vm.showSculptScreen = true } label: {
+                Label("Sculpt", systemImage: "cube")
+                    .font(.headline)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(.blue, in: Capsule())
+                    .foregroundStyle(.white)
+            }
         }
         .padding(.bottom, 30)
         .transition(.move(edge: .bottom).combined(with: .opacity))
