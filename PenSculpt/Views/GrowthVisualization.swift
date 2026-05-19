@@ -13,6 +13,12 @@ struct GrowthVisualization: UIViewRepresentable {
     static let candidatePeak = UIColor.systemOrange.withAlphaComponent(0.65)
     static let candidateBase = UIColor.systemOrange.withAlphaComponent(0.25)
 
+    // Subtract-mode palette: same alphas, red hue.
+    static let subtractSphereStrokeColor = UIColor.systemRed.withAlphaComponent(0.7)
+    static let subtractSphereFillColor = UIColor.systemRed.withAlphaComponent(0.08)
+    static let subtractCandidatePeak = UIColor.systemRed.withAlphaComponent(0.65)
+    static let subtractCandidateBase = UIColor.systemRed.withAlphaComponent(0.25)
+
     func makeUIView(context: Context) -> GrowthVisualizationView {
         let v = GrowthVisualizationView()
         v.backgroundColor = .clear
@@ -55,13 +61,27 @@ final class GrowthVisualizationView: UIView {
 
         let center = convert(model.center)
 
+        let sphereFill: UIColor
+        let sphereStroke: UIColor
+        let candidateBase: UIColor
+        switch model.mode {
+        case .add:
+            sphereFill = GrowthVisualization.sphereFillColor
+            sphereStroke = GrowthVisualization.sphereStrokeColor
+            candidateBase = GrowthVisualization.candidateBase
+        case .subtract:
+            sphereFill = GrowthVisualization.subtractSphereFillColor
+            sphereStroke = GrowthVisualization.subtractSphereStrokeColor
+            candidateBase = GrowthVisualization.subtractCandidateBase
+        }
+
         // Sphere fill
-        ctx.setFillColor(GrowthVisualization.sphereFillColor.cgColor)
+        ctx.setFillColor(sphereFill.cgColor)
         ctx.fillEllipse(in: CGRect(x: center.x - model.radius, y: center.y - model.radius,
                                     width: model.radius * 2, height: model.radius * 2))
 
         // Sphere outline (dashed)
-        ctx.setStrokeColor(GrowthVisualization.sphereStrokeColor.cgColor)
+        ctx.setStrokeColor(sphereStroke.cgColor)
         ctx.setLineWidth(1.5)
         ctx.setLineDash(phase: 0, lengths: [4, 3])
         ctx.strokeEllipse(in: CGRect(x: center.x - model.radius, y: center.y - model.radius,
@@ -85,7 +105,7 @@ final class GrowthVisualizationView: UIView {
             let now = CACurrentMediaTime()
             let phase = (sin((now / GrowthVisualization.pulsePeriod) * 2 * .pi) + 1) / 2
             let opacity = 0.25 + 0.4 * phase
-            ctx.setStrokeColor(GrowthVisualization.candidateBase
+            ctx.setStrokeColor(candidateBase
                 .withAlphaComponent(CGFloat(opacity)).cgColor)
             ctx.setLineWidth(6)
             ctx.setLineCap(.round)
