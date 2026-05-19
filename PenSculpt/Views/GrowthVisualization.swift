@@ -16,7 +16,6 @@ struct GrowthVisualization: UIViewRepresentable {
     // Subtract-mode palette: same alphas, red hue.
     static let subtractSphereStrokeColor = UIColor.systemRed.withAlphaComponent(0.7)
     static let subtractSphereFillColor = UIColor.systemRed.withAlphaComponent(0.08)
-    static let subtractCandidatePeak = UIColor.systemRed.withAlphaComponent(0.65)
     static let subtractCandidateBase = UIColor.systemRed.withAlphaComponent(0.25)
 
     func makeUIView(context: Context) -> GrowthVisualizationView {
