@@ -42,12 +42,17 @@ Pool restrito em subtract é importante: o halo não atravessa strokes não-sele
 
 ### 3. Distinção visual: paleta vermelha em subtract
 
-Add mode mantém visual atual (halo azul, candidate orange — já validado pelo usuário em 2026-05-12). Subtract mode usa:
+Add mode mantém visual atual (já validado pelo usuário em 2026-05-12). Subtract mode usa as mesmas alphas, trocando o hue:
 
-- Halo: `systemRed` (no lugar do `systemBlue`).
-- Candidate base/peak: `systemRed` tonal (no lugar do `systemOrange`).
+| Elemento                | Add (atual)             | Subtract (novo)         |
+|-------------------------|-------------------------|-------------------------|
+| `sphereStrokeColor`     | `systemBlue` α=0.7      | `systemRed` α=0.7       |
+| `sphereFillColor`       | `systemBlue` α=0.08     | `systemRed` α=0.08      |
+| `candidatePeak`         | `systemOrange` α=0.65   | `systemRed` α=0.65      |
+| `candidateBase`         | `systemOrange` α=0.25   | `systemRed` α=0.25      |
+| `haloColor` (pause)     | `systemYellow` α=0.85   | `systemYellow` α=0.85 (inalterado — semântica "pausa" é mode-agnostic) |
 
-Sinal inequívoco de "estou removendo". Pulse e velocidades inalterados.
+Pulse period e velocidades inalterados. Sinal inequívoco de "estou removendo".
 
 ### 4. Botão Deselect na action bar inferior
 
@@ -115,8 +120,9 @@ Sem mudança.
 ### `PenSculpt/Views/GrowthVisualization.swift`
 
 - Ler `frame.mode`.
-- Em `.subtract`: trocar `systemBlue` (halo) → `systemRed`; `systemOrange` (candidate base/peak) → variante vermelha tonalmente equivalente.
+- Em `.subtract`: aplicar substituições da tabela de paleta (decisão 3). Implementação: ou ramo `if mode == .subtract` dentro de `draw(_:)` escolhendo cores, ou par estático `subtractSphere*/subtractCandidate*` e seleção via dicionário. Decisão final na fase de plano.
 - Em `.add`: paleta atual inalterada.
+- `haloColor` (pausa) inalterado nos dois modos.
 
 ### `PenSculpt/Views/DrawingScreen.swift`
 
