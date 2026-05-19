@@ -154,8 +154,8 @@ class DrawingViewModel {
     }
 
     /// Combines the pre-gesture selection snapshot with the session's affected
-    /// set. Add mode unions; subtract mode (added in a later step) will
-    /// difference. Returns the set to assign to `selectedStrokeIDs`.
+    /// set. Add mode unions the prior selection with the session's admissions;
+    /// subtract mode removes them. Returns the set to assign to `selectedStrokeIDs`.
     private func applyGrowToSelection(prior: Set<UUID>, session: GrowSession) -> Set<UUID> {
         switch session.mode {
         case .add:      return prior.union(session.includedStrokeIDs)
