@@ -397,4 +397,16 @@ final class DrawingViewModelTests: XCTestCase {
         XCTAssertEqual(vm.selectedStrokeIDs, [aID, bID],
                        "cancel restores the full pre-grow selection")
     }
+
+    func testClearSelectionEmptiesSelectedStrokeIDs() {
+        let vm = makeVM()
+        let s = makeStroke()
+        vm.addStroke(s)
+        vm.selectedStrokeIDs = [s.id]
+        XCTAssertTrue(vm.hasSelection)
+
+        vm.clearSelection()
+        XCTAssertFalse(vm.hasSelection)
+        XCTAssertTrue(vm.selectedStrokeIDs.isEmpty)
+    }
 }

@@ -135,6 +135,12 @@ class DrawingViewModel {
         selectionBeforeGrow = nil
     }
 
+    /// Clears the current selection. Used by the Deselect button in the
+    /// selection action bar.
+    func clearSelection() {
+        selectedStrokeIDs = []
+    }
+
     /// Discards the active grow gesture and reverts the selection to what it
     /// was before the hold began (system cancellation, mode toggle, etc.).
     func handleGrowGestureCancelled() {
