@@ -1,5 +1,10 @@
 import Foundation
 
+enum GrowMode {
+    case add
+    case subtract
+}
+
 /// One frame of grow-session state for visualization consumers.
 struct GrowFrame {
     let radius: CGFloat
@@ -7,6 +12,7 @@ struct GrowFrame {
     let includedStrokeIDs: Set<UUID>
     let nextCandidateID: UUID?
     let isPaused: Bool
+    let mode: GrowMode
 }
 
 enum GrowStrategy: SelectionStrategy {
@@ -27,8 +33,8 @@ enum GrowStrategy: SelectionStrategy {
 
     /// Starts a new grow session, immediately admitting any strokes within `initialRadius`
     /// (and the seed stroke itself, if origin is `.stroke`).
-    static func start(origin: GrowOrigin, canvas: Canvas) -> GrowSession {
-        let session = GrowSession(origin: origin, allStrokes: canvas.strokes)
+    static func start(origin: GrowOrigin, mode: GrowMode, candidatePool: [Stroke]) -> GrowSession {
+        let session = GrowSession(origin: origin, mode: mode, candidatePool: candidatePool)
         session.admitInitial()
         return session
     }
@@ -37,16 +43,18 @@ enum GrowStrategy: SelectionStrategy {
 /// Mutable per-hold state. Driven by `tick(deltaTime:)` from a display link.
 final class GrowSession {
     let origin: GrowOrigin
-    let allStrokes: [Stroke]
+    let mode: GrowMode
+    let candidatePool: [Stroke]
 
     private(set) var currentRadius: CGFloat = GrowStrategy.initialRadius
     private(set) var includedStrokeIDs: Set<UUID> = []
     private(set) var nextCandidateID: UUID?
     private(set) var isPaused: Bool = false
 
-    init(origin: GrowOrigin, allStrokes: [Stroke]) {
+    init(origin: GrowOrigin, mode: GrowMode, candidatePool: [Stroke]) {
         self.origin = origin
-        self.allStrokes = allStrokes
+        self.mode = mode
+        self.candidatePool = candidatePool
     }
 
     /// Admit seed (for stroke origins) and any strokes already within `initialRadius`.
@@ -71,7 +79,8 @@ final class GrowSession {
                 center: origin.anchor,
                 includedStrokeIDs: includedStrokeIDs,
                 nextCandidateID: nil,
-                isPaused: false
+                isPaused: false,
+                mode: mode
             )
         }
         let nominalDeltaR = GrowStrategy.baseGrowthSpeed * CGFloat(deltaTime)
@@ -89,7 +98,8 @@ final class GrowSession {
             center: origin.anchor,
             includedStrokeIDs: includedStrokeIDs,
             nextCandidateID: nextCandidateID,
-            isPaused: isPaused
+            isPaused: isPaused,
+            mode: mode
         )
     }
 
@@ -102,14 +112,14 @@ final class GrowSession {
 
     private var frontierPoints: [CGPoint] {
         var pts: [CGPoint] = [origin.anchor]
-        for s in allStrokes where includedStrokeIDs.contains(s.id) {
+        for s in candidatePool where includedStrokeIDs.contains(s.id) {
             pts.append(contentsOf: s.points.map { $0.location })
         }
         return pts
     }
 
     private var candidateStrokes: [Stroke] {
-        allStrokes.filter { !includedStrokeIDs.contains($0.id) }
+        candidatePool.filter { !includedStrokeIDs.contains($0.id) }
     }
 
     private func admitWithinRadius(catchUpRadius: CGFloat) {

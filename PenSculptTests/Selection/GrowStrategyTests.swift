@@ -24,7 +24,8 @@ final class GrowStrategyTests: XCTestCase {
         let other = stroke(at: [CGPoint(x: 500, y: 500)])
         let session = GrowStrategy.start(
             origin: .stroke(strokeID: id, anchor: CGPoint(x: 100, y: 100)),
-            canvas: canvas([seed, other])
+            mode: .add,
+            candidatePool: canvas([seed, other]).strokes
         )
         XCTAssertTrue(session.includedStrokeIDs.contains(id))
         XCTAssertFalse(session.includedStrokeIDs.contains(other.id))
@@ -34,7 +35,8 @@ final class GrowStrategyTests: XCTestCase {
         let far = stroke(at: [CGPoint(x: 500, y: 500)])
         let session = GrowStrategy.start(
             origin: .point(.zero),
-            canvas: canvas([far])
+            mode: .add,
+            candidatePool: canvas([far]).strokes
         )
         XCTAssertTrue(session.includedStrokeIDs.isEmpty)
     }
@@ -44,7 +46,8 @@ final class GrowStrategyTests: XCTestCase {
         let close = stroke(at: [CGPoint(x: 5, y: 0)])
         let session = GrowStrategy.start(
             origin: .point(.zero),
-            canvas: canvas([close])
+            mode: .add,
+            candidatePool: canvas([close]).strokes
         )
         XCTAssertTrue(session.includedStrokeIDs.contains(close.id))
     }
@@ -53,7 +56,7 @@ final class GrowStrategyTests: XCTestCase {
 
     func testRadiusGrowsMonotonically() {
         let s = stroke(at: [CGPoint(x: 1000, y: 1000)])
-        let session = GrowStrategy.start(origin: .point(.zero), canvas: canvas([s]))
+        let session = GrowStrategy.start(origin: .point(.zero), mode: .add, candidatePool: canvas([s]).strokes)
         var lastR = session.currentRadius
         for _ in 0..<10 {
             let frame = session.tick(deltaTime: 1.0 / 60.0)
@@ -67,7 +70,7 @@ final class GrowStrategyTests: XCTestCase {
     func testTickIncludesCloseStrokeAfterEnoughTime() {
         // Stroke at distance 40; baseGrowthSpeed=50 px/s → reaches in ~0.64s.
         let target = stroke(at: [CGPoint(x: 40, y: 0)])
-        let session = GrowStrategy.start(origin: .point(.zero), canvas: canvas([target]))
+        let session = GrowStrategy.start(origin: .point(.zero), mode: .add, candidatePool: canvas([target]).strokes)
         let totalTime: TimeInterval = 1.0  // give it enough margin
         var t: TimeInterval = 0
         let dt = 1.0 / 60.0
@@ -88,7 +91,8 @@ final class GrowStrategyTests: XCTestCase {
         let isolated = stroke(at: [CGPoint(x: 500, y: 0)])
         let session = GrowStrategy.start(
             origin: .point(.zero),
-            canvas: canvas(cluster + [isolated])
+            mode: .add,
+            candidatePool: canvas(cluster + [isolated]).strokes
         )
         // After cluster inclusion, density factor should drop below 1.0 within a few ticks.
         let dt: TimeInterval = 1.0 / 60.0
@@ -129,7 +133,8 @@ final class GrowStrategyTests: XCTestCase {
         let right = stroke(at: ys.map { CGPoint(x: 100, y: $0) })
         let session = GrowStrategy.start(
             origin: .point(CGPoint(x: 0, y: 50)),
-            canvas: canvas([left, middle, right])
+            mode: .add,
+            candidatePool: canvas([left, middle, right]).strokes
         )
         XCTAssertTrue(session.includedStrokeIDs.contains(middle.id),
                       "Middle line under the anchor should be admitted at t=0")
@@ -166,7 +171,8 @@ final class GrowStrategyTests: XCTestCase {
         let right = stroke(at: ys.map { CGPoint(x: 100, y: $0) })
         let session = GrowStrategy.start(
             origin: .point(CGPoint(x: 5, y: 50)),
-            canvas: canvas([left, middle, right])
+            mode: .add,
+            candidatePool: canvas([left, middle, right]).strokes
         )
         // Middle line still under the anchor → admitted at t=0.
         XCTAssertTrue(session.includedStrokeIDs.contains(middle.id))
@@ -200,7 +206,8 @@ final class GrowStrategyTests: XCTestCase {
         let seed = stroke(at: [CGPoint(x: 0, y: 0)], id: id)
         let session = GrowStrategy.start(
             origin: .stroke(strokeID: id, anchor: .zero),
-            canvas: canvas([seed])
+            mode: .add,
+            candidatePool: canvas([seed]).strokes
         )
         XCTAssertEqual(session.finalize(), [id])
     }
@@ -209,7 +216,7 @@ final class GrowStrategyTests: XCTestCase {
         // Origin point at zero with one stroke at distance 30 — reachable in <1s
         // at baseGrowthSpeed=50.
         let target = stroke(at: [CGPoint(x: 30, y: 0)])
-        let session = GrowStrategy.start(origin: .point(.zero), canvas: canvas([target]))
+        let session = GrowStrategy.start(origin: .point(.zero), mode: .add, candidatePool: canvas([target]).strokes)
         for _ in 0..<60 {
             _ = session.tick(deltaTime: 1.0 / 60.0)
         }

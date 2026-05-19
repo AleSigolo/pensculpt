@@ -94,7 +94,7 @@ class DrawingViewModel {
     func handleGrowGestureStarted(origin: GrowOrigin) {
         cancelLasso()
         selectionBeforeGrow = selectedStrokeIDs
-        let session = GrowStrategy.start(origin: origin, canvas: canvas)
+        let session = GrowStrategy.start(origin: origin, mode: .add, candidatePool: canvas.strokes)
         growSession = session
         // Reflect the initial admission in the highlight layer so the user
         // immediately sees what's being captured.
@@ -104,7 +104,8 @@ class DrawingViewModel {
             center: origin.anchor,
             includedStrokeIDs: session.includedStrokeIDs,
             nextCandidateID: session.nextCandidateID,
-            isPaused: session.isPaused
+            isPaused: session.isPaused,
+            mode: .add
         )
         startDisplayLink()
     }
