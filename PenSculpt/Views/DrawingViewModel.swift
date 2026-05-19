@@ -105,7 +105,7 @@ class DrawingViewModel {
             includedStrokeIDs: session.includedStrokeIDs,
             nextCandidateID: session.nextCandidateID,
             isPaused: session.isPaused,
-            mode: .add
+            mode: session.mode
         )
         startDisplayLink()
     }
