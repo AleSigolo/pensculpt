@@ -261,7 +261,7 @@ final class DrawingViewModelTests: XCTestCase {
         vm.selectedStrokeIDs = [priorID]
 
         vm.handleGrowGestureStarted(origin: .stroke(strokeID: growID, anchor: .zero))
-        XCTAssertEqual(vm.selectedStrokeIDs, [growID], "during hold, selection mirrors grow")
+        XCTAssertEqual(vm.selectedStrokeIDs, [priorID, growID], "during hold, selection mirrors prior ∪ grow")
 
         vm.handleGrowGestureCancelled()
         XCTAssertNil(vm.growSession)
@@ -283,5 +283,27 @@ final class DrawingViewModelTests: XCTestCase {
         XCTAssertEqual(vm.appMode, .draw)
         XCTAssertNil(vm.growSession)
         XCTAssertNil(vm.growthFrame)
+    }
+
+    func testGrowAddUnionsWithPriorSelection() {
+        let vm = makeVM()
+        let priorID = UUID()
+        let prior = Stroke(id: priorID, points: [
+            StrokePoint(location: CGPoint(x: 1000, y: 1000), pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        let growID = UUID()
+        let target = Stroke(id: growID, points: [
+            StrokePoint(location: .zero, pressure: 1, tilt: 0, azimuth: 0, timestamp: 0)
+        ])
+        vm.canvas.strokes = [prior, target]
+        vm.selectedStrokeIDs = [priorID]
+
+        vm.handleGrowGestureStarted(origin: .stroke(strokeID: growID, anchor: .zero))
+        XCTAssertEqual(vm.selectedStrokeIDs, [priorID, growID],
+                       "during hold, selection mirrors prior ∪ grown")
+
+        vm.handleGrowGestureEnded()
+        XCTAssertEqual(vm.selectedStrokeIDs, [priorID, growID],
+                       "finalize commits prior ∪ grown")
     }
 }

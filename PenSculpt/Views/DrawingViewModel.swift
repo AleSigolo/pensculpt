@@ -93,12 +93,13 @@ class DrawingViewModel {
 
     func handleGrowGestureStarted(origin: GrowOrigin) {
         cancelLasso()
-        selectionBeforeGrow = selectedStrokeIDs
+        let prior = selectedStrokeIDs
+        selectionBeforeGrow = prior
         let session = GrowStrategy.start(origin: origin, mode: .add, candidatePool: canvas.strokes)
         growSession = session
         // Reflect the initial admission in the highlight layer so the user
         // immediately sees what's being captured.
-        selectedStrokeIDs = session.includedStrokeIDs
+        selectedStrokeIDs = applyGrowToSelection(prior: prior, session: session)
         growthFrame = GrowFrame(
             radius: session.currentRadius,
             center: origin.anchor,
@@ -112,10 +113,11 @@ class DrawingViewModel {
 
     func handleGrowGestureEnded() {
         stopDisplayLink()
-        if let session = growSession {
-            // Already mirrored in selectedStrokeIDs by ticks; finalize is just
-            // the canonical snapshot so we always commit the same set.
-            selectedStrokeIDs = session.finalize()
+        if let session = growSession, let prior = selectionBeforeGrow {
+            // Already mirrored in selectedStrokeIDs by ticks; recomputing from
+            // the snapshot guarantees the canonical commit even if a tick was
+            // skipped between the last frame and release.
+            selectedStrokeIDs = applyGrowToSelection(prior: prior, session: session)
         }
         growSession = nil
         growthFrame = nil
@@ -132,6 +134,16 @@ class DrawingViewModel {
         growSession = nil
         growthFrame = nil
         selectionBeforeGrow = nil
+    }
+
+    /// Combines the pre-gesture selection snapshot with the session's affected
+    /// set. Add mode unions; subtract mode (added in a later step) will
+    /// difference. Returns the set to assign to `selectedStrokeIDs`.
+    private func applyGrowToSelection(prior: Set<UUID>, session: GrowSession) -> Set<UUID> {
+        switch session.mode {
+        case .add:      return prior.union(session.includedStrokeIDs)
+        case .subtract: return prior.subtracting(session.includedStrokeIDs)
+        }
     }
 
     private func startDisplayLink() {
@@ -152,12 +164,12 @@ class DrawingViewModel {
         let now = link.timestamp
         let dt = max(0, now - lastTickTimestamp)
         lastTickTimestamp = now
-        guard let session = growSession else { return }
+        guard let session = growSession, let prior = selectionBeforeGrow else { return }
         let frame = session.tick(deltaTime: dt)
         growthFrame = frame
         // Mirror the running session into the published selection so the
         // highlight layer paints captured strokes as they get admitted.
-        selectedStrokeIDs = frame.includedStrokeIDs
+        selectedStrokeIDs = applyGrowToSelection(prior: prior, session: session)
     }
 
     private func cancelLasso() {
