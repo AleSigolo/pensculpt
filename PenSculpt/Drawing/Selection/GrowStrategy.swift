@@ -126,23 +126,16 @@ final class GrowSession {
         let beforeCount = includedStrokeIDs.count
         let frontier = frontierPoints
         for stroke in candidateStrokes {
-            var bestMinD = CGFloat.infinity
             for sp in stroke.points {
                 var minD = CGFloat.infinity
                 for fp in frontier {
                     let d = hypot(sp.location.x - fp.x, sp.location.y - fp.y)
                     if d < minD { minD = d }
                 }
-                if minD < bestMinD { bestMinD = minD }
                 if minD <= currentRadius {
                     includedStrokeIDs.insert(stroke.id)
                     break
                 }
-            }
-            // DIAG: log strokes that are NOT admitted with their distance vs radius.
-            if !includedStrokeIDs.contains(stroke.id) {
-                let firstPt = stroke.points.first?.location ?? .zero
-                print("[GROW-DIAG] stroke=\(stroke.id.uuidString.prefix(8)) firstPt=(\(Int(firstPt.x)),\(Int(firstPt.y))) bbox=\(stroke.boundingBox) minD=\(Int(bestMinD)) radius=\(Int(currentRadius)) anchor=(\(Int(origin.anchor.x)),\(Int(origin.anchor.y))) points=\(stroke.points.count)")
             }
         }
 

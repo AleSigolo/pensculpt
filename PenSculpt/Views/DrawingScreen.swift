@@ -98,25 +98,7 @@ struct DrawingScreen: View {
                 allStrokes: vm.canvas.strokes,
                 viewBridge: viewBridge,
                 onLassoCompleted: { vm.handleLassoCompleted(polygon: $0) },
-                onGrowGestureStarted: { origin in
-                    // DIAG: compare canvas.strokes (algorithm input) vs pkDrawing.strokes
-                    // (visual render) — any mismatch in count or content means the
-                    // grow algorithm is missing strokes the user can see, or vice versa.
-                    let canvasCount = vm.canvas.strokes.count
-                    let pkCount = pkDrawing.strokes.count
-                    print("[GROW-SYNC] canvas.strokes=\(canvasCount) pkDrawing.strokes=\(pkCount) match=\(canvasCount == pkCount)")
-                    for (i, pks) in pkDrawing.strokes.enumerated() {
-                        let renderB = pks.renderBounds
-                        let canvasB: String
-                        if i < vm.canvas.strokes.count {
-                            canvasB = "\(vm.canvas.strokes[i].boundingBox)"
-                        } else {
-                            canvasB = "MISSING"
-                        }
-                        print("[GROW-SYNC] [\(i)] pkRender=\(renderB) vs canvasBBox=\(canvasB)")
-                    }
-                    vm.handleGrowGestureStarted(origin: origin)
-                },
+                onGrowGestureStarted: { vm.handleGrowGestureStarted(origin: $0) },
                 onGrowGestureEnded: { vm.handleGrowGestureEnded() },
                 onGrowGestureCancelled: { vm.handleGrowGestureCancelled() }
             )
@@ -300,10 +282,8 @@ struct DrawingScreen: View {
     // MARK: - Undo-aware actions
 
     private func addStrokeWithUndo(_ stroke: Stroke) {
-        print("[ADD-STROKE] id=\(stroke.id.uuidString.prefix(8)) source=onStrokeCompleted canvas.count(before)=\(vm.canvas.strokes.count)")
         vm.addStroke(stroke)
         undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
-            print("[UNDO-ADD] removing id=\(stroke.id.uuidString.prefix(8))")
             vm.removeStroke(id: stroke.id)
             pkDrawing = PKDrawing(strokes: pkDrawing.strokes.dropLast())
         }
@@ -320,7 +300,6 @@ struct DrawingScreen: View {
     }
 
     private func handleErase(_ removedIndices: [Int], _ removedPKStrokes: [PKStroke]) {
-        print("[ERASE] removing indices=\(removedIndices) canvas.count(before)=\(vm.canvas.strokes.count)")
         for ix in (0..<removedIndices.count).reversed() {
             let index = removedIndices[ix]
             guard index < vm.canvas.strokes.count else { continue }

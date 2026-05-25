@@ -82,13 +82,6 @@ class DrawingViewModel {
             strokes: canvas.strokes,
             polygon: polygon
         )
-        // DIAG: log every stroke and whether it was selected.
-        let polyBounds = polygon.reduce(CGRect.null) { $0.union(CGRect(origin: $1, size: .zero)) }
-        print("[LASSO-DIAG] polygon bounds=\(polyBounds) points=\(polygon.count) totalStrokes=\(canvas.strokes.count) selected=\(selectedStrokeIDs.count)")
-        for s in canvas.strokes {
-            let inside = selectedStrokeIDs.contains(s.id) ? "IN " : "OUT"
-            print("[LASSO-DIAG] \(inside) stroke=\(s.id.uuidString.prefix(8)) bbox=\(s.boundingBox) pts=\(s.points.count)")
-        }
     }
 
     func handleGrowGestureStarted(origin: GrowOrigin) {

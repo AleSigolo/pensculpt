@@ -165,10 +165,6 @@ final class SelectionView: UIView {
         let p = points(for: location, in: self)
         switch gr.state {
         case .began:
-            // DIAG: log lasso start coords + scrollview state.
-            if let sv = targetView as? UIScrollView {
-                print("[GESTURE-DIAG] LASSO-BEGIN display=(\(Int(p.display.x)),\(Int(p.display.y))) target=(\(Int(p.target.x)),\(Int(p.target.y))) contentOffset=\(sv.contentOffset) zoom=\(sv.zoomScale)")
-            }
             beginStroke(displayPoint: p.display, targetPoint: p.target)
         case .changed:
             continueStroke(displayPoint: p.display, targetPoint: p.target)
@@ -184,12 +180,6 @@ final class SelectionView: UIView {
         case .began:
             let display = gr.location(in: self)
             let target = targetView.map { gr.view!.convert(display, to: $0) } ?? display
-            // DIAG: log gesture coords + scrollview state.
-            if let sv = targetView as? UIScrollView {
-                print("[GESTURE-DIAG] LONG-PRESS display=(\(Int(display.x)),\(Int(display.y))) target=(\(Int(target.x)),\(Int(target.y))) contentOffset=\(sv.contentOffset) zoom=\(sv.zoomScale) contentSize=\(sv.contentSize) bounds=\(sv.bounds)")
-            } else {
-                print("[GESTURE-DIAG] LONG-PRESS display=(\(Int(display.x)),\(Int(display.y))) target=(\(Int(target.x)),\(Int(target.y))) [targetView not a UIScrollView]")
-            }
             beginGrow(at: target, strokes: allStrokes)
         case .ended:
             endGrow()

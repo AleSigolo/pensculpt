@@ -92,11 +92,6 @@ struct CanvasView: UIViewRepresentable {
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             let currentDrawing = canvasView.drawing
             let currentCount = currentDrawing.strokes.count
-            let branch: String
-            if currentCount > previousStrokeCount { branch = "ADD" }
-            else if currentCount < previousStrokeCount { branch = "REMOVE" }
-            else { branch = "NOOP" }
-            print("[CV-DDC] prev=\(previousStrokeCount) curr=\(currentCount) branch=\(branch)")
 
             if currentCount > previousStrokeCount {
                 // Find strokes that exist in current but not in previous.
