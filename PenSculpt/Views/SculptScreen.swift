@@ -61,246 +61,13 @@ struct SculptScreen: View {
             onViewReady: { view in Task { @MainActor in metalView = view } }
         )
         .ignoresSafeArea()
-        .overlay {
-            if let cursor = deformCursor {
-                Circle()
-                    .strokeBorder(style: StrokeStyle(lineWidth: config.deformCursorLineWidth, dash: config.deformCursorDash))
-                    .foregroundStyle(.orange.opacity(config.deformCursorOpacity))
-                    .frame(width: cursor.radius * 2, height: cursor.radius * 2)
-                    .position(cursor.position)
-                    .allowsHitTesting(false)
-            }
-        }
-        .overlay(alignment: .topLeading) {
-            HStack(spacing: 12) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
-                }
-                .tooltip(.sculptClose)
-
-                Button(action: reInfer) {
-                    if isReInferring {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "arrow.clockwise.circle.fill")
-                            .font(.title)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(isReInferring)
-                .tooltip(.sculptReinfer)
-
-                Button(action: reInferMorph) {
-                    if isReInferring {
-                        ProgressView()
-                    } else {
-                        VStack(spacing: 2) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                            Text("beta")
-                                .font(.system(size: 8))
-                        }
-                        .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(isReInferring)
-                .tooltip(.sculptReinferMorph)
-
-                Button {
-                    autoProjectStrokes.toggle()
-                } label: {
-                    Image(systemName: autoProjectStrokes ? "arrow.down.doc.fill" : "arrow.down.doc")
-                        .font(.title)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(autoProjectStrokes ? .blue : .secondary)
-                }
-                .tooltip(.sculptAutoProject)
-
-                Button {
-                    showFormatDialog = true
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.title)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
-                }
-                .tooltip(.sculptExport)
-
-                TooltipsToggleButton()
-            }
-            .padding()
-        }
-        .overlay(alignment: .top) {
-            if sculptObjects.count > 1 {
-                Text("\(activeObjectIndex + 1) / \(sculptObjects.count)")
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.top, 60)
-            }
-        }
-        .overlay(alignment: .bottom) {
-            HStack(spacing: 12) {
-                Button { showColorPopover = true } label: {
-                    Circle()
-                        .fill(Color(activeColor))
-                        .frame(width: 28, height: 28)
-                        .overlay(Circle().stroke(Color.primary.opacity(0.4), lineWidth: 1))
-                }
-                .tooltip(.sculptColorSwatch)
-                .popover(isPresented: $showColorPopover) {
-                    ColorPickerPopover(
-                        activeColor: activeColor,
-                        recentColors: recentColors,
-                        onSelectPreset: onSelectPresetColor,
-                        onSelectCustom: onSelectCustomColor
-                    )
-                }
-
-                Divider().frame(height: 24)
-
-                BrushControls(brushSize: $brushSize, brushOpacity: $brushOpacity, isDeformMode: isDeformMode)
-
-                Divider().frame(height: 24)
-
-                Button {
-                    surfaceSpaceStrokes.toggle()
-                } label: {
-                    Image(systemName: surfaceSpaceStrokes ? "cube.fill" : "square.fill")
-                        .font(.caption)
-                        .foregroundStyle(surfaceSpaceStrokes ? .blue : .secondary)
-                }
-                .tooltip(.sculptSurfaceSpace)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-            .padding(.bottom, 20)
-        }
-        .overlay(alignment: .bottomLeading) {
-            Image(systemName: isRotateMode ? "rotate.3d.fill" : "rotate.3d")
-                .font(.title)
-                .foregroundStyle(isRotateMode ? .blue : .secondary)
-                .frame(width: 60, height: 60)
-                .background(.ultraThinMaterial, in: Circle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in isRotateMode = true }
-                        .onEnded { _ in isRotateMode = false }
-                )
-                .tooltip(.sculptRotate)
-                .padding(20)
-        }
-        .overlay(alignment: .topTrailing) {
-            HStack(spacing: 12) {
-                Button {
-                    let newMode: SculptRenderer.ProjectionMode =
-                        (projectionMode == .orthographic) ? .perspective : .orthographic
-                    projectionMode = newMode
-                    rendererSetProjectionMode?(newMode, true)
-                    if newMode == .orthographic {
-                        showFOVPopover = false
-                    }
-                } label: {
-                    Image(systemName: projectionMode == .perspective ? "view.3d" : "view.2d")
-                        .font(.title)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(projectionMode == .perspective ? .blue : .secondary)
-                }
-                .tooltip(.sculptPerspective)
-
-                if projectionMode == .perspective {
-                    Button {
-                        showFOVPopover.toggle()
-                    } label: {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.title)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(showFOVPopover ? .blue : .secondary)
-                    }
-                    .popover(isPresented: $showFOVPopover, arrowEdge: .top) {
-                        VStack(spacing: 12) {
-                            Text("Field of View")
-                                .font(.subheadline.weight(.medium))
-                            HStack {
-                                Text("20°")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                Slider(
-                                    value: Binding(
-                                        get: { Double(perspectiveFOV * 180 / .pi) },
-                                        set: { newDegrees in
-                                            perspectiveFOV = Float(newDegrees) * .pi / 180
-                                            rendererSetPerspectiveFOV?(perspectiveFOV)
-                                        }
-                                    ),
-                                    in: 20...90,
-                                    step: 1
-                                )
-                                .frame(width: 220)
-                                Text("90°")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text("\(Int(perspectiveFOV * 180 / .pi))°")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(16)
-                        .presentationCompactAdaptation(.popover)
-                    }
-                    .tooltip(.sculptFOV)
-                }
-            }
-            .padding()
-        }
-        .overlay(alignment: .bottomTrailing) {
-            HStack(spacing: 12) {
-                Button {
-                    if isDeformMode {
-                        isSmoothMode.toggle()
-                    } else {
-                        isEraseStrokeMode.toggle()
-                    }
-                } label: {
-                    let active = isDeformMode ? isSmoothMode : isEraseStrokeMode
-                    Image(systemName: active ? "eraser.fill" : "eraser")
-                        .font(.title2)
-                        .foregroundStyle(active ? .mint : .secondary)
-                        .frame(width: 50, height: 50)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .tooltip(.sculptEraser)
-
-                Button {
-                    if isDeformMode {
-                        isDeformMode = false
-                        isSmoothMode = false
-                        brushOpacity = savedDrawOpacity
-                    } else {
-                        savedDrawOpacity = brushOpacity
-                        isDeformMode = true
-                        isEraseStrokeMode = false
-                        brushOpacity = CGFloat(config.deformDefaultForce)
-                    }
-                } label: {
-                    Image(systemName: isDeformMode ? "hand.point.up.fill" : "hand.point.up")
-                        .font(.title)
-                        .foregroundStyle(isDeformMode ? .orange : .secondary)
-                        .frame(width: 60, height: 60)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .tooltip(.sculptDeform)
-            }
-            .padding(20)
-        }
+        .overlay { deformCursorOverlay }
+        .overlay(alignment: .topLeading) { topToolbar }
+        .overlay(alignment: .top) { objectCountBadge }
+        .overlay(alignment: .bottom) { bottomToolbar }
+        .overlay(alignment: .bottomLeading) { rotateButton }
+        .overlay(alignment: .topTrailing) { projectionControls }
+        .overlay(alignment: .bottomTrailing) { sculptActionButtons }
         .onReceive(NotificationCenter.default.publisher(for: .pencilDoubleTap)) { _ in
             if isDeformMode {
                 isSmoothMode.toggle()
@@ -349,6 +116,263 @@ struct SculptScreen: View {
             Text(err.errorDescription ?? "")
         }
     }
+
+    // MARK: - Overlays
+
+    @ViewBuilder
+    private var deformCursorOverlay: some View {
+        if let cursor = deformCursor {
+            Circle()
+                .strokeBorder(style: StrokeStyle(lineWidth: config.deformCursorLineWidth, dash: config.deformCursorDash))
+                .foregroundStyle(.orange.opacity(config.deformCursorOpacity))
+                .frame(width: cursor.radius * 2, height: cursor.radius * 2)
+                .position(cursor.position)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var topToolbar: some View {
+        HStack(spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+            }
+            .tooltip(.sculptClose)
+
+            Button(action: reInfer) {
+                if isReInferring {
+                    ProgressView()
+                } else {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .font(.title)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .disabled(isReInferring)
+            .tooltip(.sculptReinfer)
+
+            Button(action: reInferMorph) {
+                if isReInferring {
+                    ProgressView()
+                } else {
+                    VStack(spacing: 2) {
+                        Image(systemName: "sparkles")
+                            .font(.title3)
+                        Text("beta")
+                            .font(.system(size: 8))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .disabled(isReInferring)
+            .tooltip(.sculptReinferMorph)
+
+            Button {
+                autoProjectStrokes.toggle()
+            } label: {
+                Image(systemName: autoProjectStrokes ? "arrow.down.doc.fill" : "arrow.down.doc")
+                    .font(.title)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(autoProjectStrokes ? .blue : .secondary)
+            }
+            .tooltip(.sculptAutoProject)
+
+            Button {
+                showFormatDialog = true
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.title)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+            }
+            .tooltip(.sculptExport)
+
+            TooltipsToggleButton()
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private var objectCountBadge: some View {
+        if sculptObjects.count > 1 {
+            Text("\(activeObjectIndex + 1) / \(sculptObjects.count)")
+                .font(.caption.weight(.medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.top, 60)
+        }
+    }
+
+    private var bottomToolbar: some View {
+        HStack(spacing: 12) {
+            Button { showColorPopover = true } label: {
+                Circle()
+                    .fill(Color(activeColor))
+                    .frame(width: 28, height: 28)
+                    .overlay(Circle().stroke(Color.primary.opacity(0.4), lineWidth: 1))
+            }
+            .tooltip(.sculptColorSwatch)
+            .popover(isPresented: $showColorPopover) {
+                ColorPickerPopover(
+                    activeColor: activeColor,
+                    recentColors: recentColors,
+                    onSelectPreset: onSelectPresetColor,
+                    onSelectCustom: onSelectCustomColor
+                )
+            }
+
+            Divider().frame(height: 24)
+
+            BrushControls(brushSize: $brushSize, brushOpacity: $brushOpacity, isDeformMode: isDeformMode)
+
+            Divider().frame(height: 24)
+
+            Button {
+                surfaceSpaceStrokes.toggle()
+            } label: {
+                Image(systemName: surfaceSpaceStrokes ? "cube.fill" : "square.fill")
+                    .font(.caption)
+                    .foregroundStyle(surfaceSpaceStrokes ? .blue : .secondary)
+            }
+            .tooltip(.sculptSurfaceSpace)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.bottom, 20)
+    }
+
+    private var rotateButton: some View {
+        Image(systemName: isRotateMode ? "rotate.3d.fill" : "rotate.3d")
+            .font(.title)
+            .foregroundStyle(isRotateMode ? .blue : .secondary)
+            .frame(width: 60, height: 60)
+            .background(.ultraThinMaterial, in: Circle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in isRotateMode = true }
+                    .onEnded { _ in isRotateMode = false }
+            )
+            .tooltip(.sculptRotate)
+            .padding(20)
+    }
+
+    private var projectionControls: some View {
+        HStack(spacing: 12) {
+            Button {
+                let newMode: SculptRenderer.ProjectionMode =
+                    (projectionMode == .orthographic) ? .perspective : .orthographic
+                projectionMode = newMode
+                rendererSetProjectionMode?(newMode, true)
+                if newMode == .orthographic {
+                    showFOVPopover = false
+                }
+            } label: {
+                Image(systemName: projectionMode == .perspective ? "view.3d" : "view.2d")
+                    .font(.title)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(projectionMode == .perspective ? .blue : .secondary)
+            }
+            .tooltip(.sculptPerspective)
+
+            if projectionMode == .perspective {
+                Button {
+                    showFOVPopover.toggle()
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.title)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(showFOVPopover ? .blue : .secondary)
+                }
+                .popover(isPresented: $showFOVPopover, arrowEdge: .top) {
+                    fovPopoverContent
+                }
+                .tooltip(.sculptFOV)
+            }
+        }
+        .padding()
+    }
+
+    private var fovPopoverContent: some View {
+        VStack(spacing: 12) {
+            Text("Field of View")
+                .font(.subheadline.weight(.medium))
+            HStack {
+                Text("20°")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Slider(
+                    value: Binding(
+                        get: { Double(perspectiveFOV * 180 / .pi) },
+                        set: { newDegrees in
+                            perspectiveFOV = Float(newDegrees) * .pi / 180
+                            rendererSetPerspectiveFOV?(perspectiveFOV)
+                        }
+                    ),
+                    in: 20...90,
+                    step: 1
+                )
+                .frame(width: 220)
+                Text("90°")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Text("\(Int(perspectiveFOV * 180 / .pi))°")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .presentationCompactAdaptation(.popover)
+    }
+
+    private var sculptActionButtons: some View {
+        HStack(spacing: 12) {
+            Button {
+                if isDeformMode {
+                    isSmoothMode.toggle()
+                } else {
+                    isEraseStrokeMode.toggle()
+                }
+            } label: {
+                let active = isDeformMode ? isSmoothMode : isEraseStrokeMode
+                Image(systemName: active ? "eraser.fill" : "eraser")
+                    .font(.title2)
+                    .foregroundStyle(active ? .mint : .secondary)
+                    .frame(width: 50, height: 50)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .tooltip(.sculptEraser)
+
+            Button {
+                if isDeformMode {
+                    isDeformMode = false
+                    isSmoothMode = false
+                    brushOpacity = savedDrawOpacity
+                } else {
+                    savedDrawOpacity = brushOpacity
+                    isDeformMode = true
+                    isEraseStrokeMode = false
+                    brushOpacity = CGFloat(config.deformDefaultForce)
+                }
+            } label: {
+                Image(systemName: isDeformMode ? "hand.point.up.fill" : "hand.point.up")
+                    .font(.title)
+                    .foregroundStyle(isDeformMode ? .orange : .secondary)
+                    .frame(width: 60, height: 60)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .tooltip(.sculptDeform)
+        }
+        .padding(20)
+    }
+
+    // MARK: - Computed properties
 
     private var activeObjectIndex: Int {
         sculptObjects.firstIndex(where: { $0.id == activeObjectID }) ?? 0
