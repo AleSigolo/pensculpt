@@ -32,6 +32,7 @@ enum TooltipID: String, CaseIterable {
     case sculptClose
     case sculptReinfer
     case sculptReinferMorph
+    case sculptInflationMode
     case sculptAutoProject
     case sculptExport
 
@@ -65,6 +66,7 @@ enum TooltipID: String, CaseIterable {
         case .sculptClose:        return .init(title: "Close", subtitle: "Return to the 2D canvas")
         case .sculptReinfer:      return .init(title: "Re-infer shape", subtitle: "Rebuild the 3D shape from the current strokes")
         case .sculptReinferMorph: return .init(title: "Morph re-infer (beta)", subtitle: "Smoothly morph the current shape into the re-inferred one")
+        case .sculptInflationMode: return .init(title: "Inflation", subtitle: "Switch between organic (curved) and straight (cube) shape")
         case .sculptAutoProject:  return .init(title: "Auto-project strokes", subtitle: "Bring surface strokes back to 2D on exit")
         case .sculptExport:       return .init(title: "Share", subtitle: "Export an image or 3D mesh")
         case .sculptColorSwatch:  return .init(title: "Color", subtitle: "Active color for new surface strokes")

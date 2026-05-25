@@ -173,6 +173,23 @@ struct SculptScreen: View {
             .tooltip(.sculptReinferMorph)
 
             Button {
+                guard activeObjectIndex < sculptObjects.count, !isReInferring else { return }
+                let current = sculptObjects[activeObjectIndex].inflationMode
+                let newMode: InflationMode = (current == .organic) ? .straight : .organic
+                sculptObjects[activeObjectIndex].inflationMode = newMode
+                reInfer()
+            } label: {
+                let isStraight = activeObjectIndex < sculptObjects.count
+                    && sculptObjects[activeObjectIndex].inflationMode == .straight
+                Image(systemName: isStraight ? "cube.fill" : "circle")
+                    .font(.title)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(isStraight ? .blue : .secondary)
+            }
+            .disabled(isReInferring)
+            .tooltip(.sculptInflationMode)
+
+            Button {
                 autoProjectStrokes.toggle()
             } label: {
                 Image(systemName: autoProjectStrokes ? "arrow.down.doc.fill" : "arrow.down.doc")
