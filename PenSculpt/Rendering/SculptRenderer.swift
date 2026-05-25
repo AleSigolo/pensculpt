@@ -87,6 +87,14 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     }
     private var activeMorph: MorphState?
 
+    private struct TransitionState {
+        let startTime: CFTimeInterval
+        let fromTransition: Float
+        let toTransition: Float
+        let duration: CFTimeInterval
+    }
+    private var activeTransition: TransitionState?
+
     init?(device: MTLDevice) {
         self.device = device
         guard let queue = device.makeCommandQueue() else { return nil }
@@ -171,8 +179,25 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
+    func setProjectionMode(_ mode: ProjectionMode, animated: Bool) {
+        let target: Float = (mode == .perspective) ? 1.0 : 0.0
+        projectionMode = mode
+        if animated {
+            activeTransition = TransitionState(
+                startTime: CACurrentMediaTime(),
+                fromTransition: projectionTransition,
+                toTransition: target,
+                duration: 0.3
+            )
+        } else {
+            activeTransition = nil
+            projectionTransition = target
+        }
+    }
+
     func draw(in view: MTKView) {
         if activeMorph != nil { updateMorph() }
+        if activeTransition != nil { updateProjectionTransition() }
 
         guard !sculptObjects.isEmpty,
               let drawable = view.currentDrawable,
@@ -551,6 +576,19 @@ class SculptRenderer: NSObject, MTKViewDelegate {
             )
         } else {
             replaceMesh(objectID: objectID, mesh: mesh, surfaceStrokes: surfaceStrokes)
+        }
+    }
+
+    private func updateProjectionTransition() {
+        guard let trans = activeTransition else { return }
+        let elapsed = CACurrentMediaTime() - trans.startTime
+        let t = Float(min(elapsed / trans.duration, 1.0))
+        // Same smoothstep used by morph for visual consistency.
+        let smooth = t * t * (3 - 2 * t)
+        projectionTransition = trans.fromTransition + (trans.toTransition - trans.fromTransition) * smooth
+        if t >= 1.0 {
+            projectionTransition = trans.toTransition
+            activeTransition = nil
         }
     }
 
