@@ -167,3 +167,11 @@ Dois commits:
 - Pan da câmera — câmera continua orbital (centrada no objeto) como em ortho
 - Pinch zoom em perspective — fora do escopo, comportamento de pinch atual (se houver) preservado
 - Mudança no raycast pra surface stroke — usa MVP atual via `combinedProjection`, funciona em ambos os modos automaticamente
+
+## Postscript — ajustes pós-implementação (2026-05-25)
+
+Dois ajustes de UX descobertos durante a verificação manual no iPad:
+
+1. **Long-press → botão de slider dedicado.** O design original abria o popover de FOV via long-press no botão de toggle. Na prática isso se mostrou inviável: `simultaneousGesture(LongPressGesture)` em cima de um `Button` produziu detecção intermitente, e quando o popover abria o slider interno ficava bloqueado pelo gesture ainda ativo. Substituído por um botão de engrenagem (`slider.horizontal.3`) que aparece **só quando perspective está ativo**, com tap simples pra abrir/fechar o popover. A "alternativa rejeitada" do design ("Adiciona ruído visual permanente") foi resolvida tornando o botão **condicional ao modo perspective** — em ortho ele some, evitando o ruído. Commit: `2edf64e`.
+
+2. **Realocação do `.bottomTrailing` → `.topTrailing`.** O design colocava o toggle perto do `rotate.3d` no canto inferior, junto com eraser/deform. Esse cluster já estava apertado e os botões novos pioraram a precisão de toque. Movidos pra um overlay `.topTrailing` separado — agrupando-os com os outros controles de "view" (close, share, color, etc.) ao invés de com as ferramentas de interação. Estilo dos botões ajustado pra combinar com o toolbar do topo (`.font(.title)` + `.symbolRenderingMode(.hierarchical)`, sem o círculo material que os botões inferiores usam). Commit: `e243ab8`.

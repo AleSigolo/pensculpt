@@ -66,5 +66,5 @@ Status legend:
 - [x] Color in sculpt mode (per-stroke surface color shared with 2D activeColor) — O[ ] S[ ]
 - [x] Grow selection (tap + hold, additive + subtract modes) — O[ ] S[ ]
 - [x] Export (image, OBJ, share sheet) — O[ ] S[ ]   <!-- USDZ deferred; see spec out-of-scope -->
-- [ ] Perspective camera toggle — O[ ] S[ ]
+- [x] Perspective camera toggle — O[ ] S[ ]
 - [ ] Advanced inference pipeline (SkeletonExtractor, Segmenter, PrimitiveFitter, MeshAssembler, StrokeMapper) — O[ ] S[ ]

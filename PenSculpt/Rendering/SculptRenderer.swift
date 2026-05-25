@@ -71,6 +71,9 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     private var combinedCenter = SIMD3<Float>(0, 0, 0)
     private(set) var combinedRadius: Float = 1
 
+    /// Logical projection mode. Mirrors the user-facing toggle state; the
+    /// actual projection used by `combinedProjection` is driven by
+    /// `projectionTransition`, which animates between modes.
     var projectionMode: ProjectionMode = .orthographic
     var perspectiveFOV: Float = .pi / 180 * 50  // 50° default
     /// 0 = pure ortho, 1 = pure perspective. Animated by updateProjectionTransition().
