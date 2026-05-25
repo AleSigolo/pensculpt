@@ -22,6 +22,11 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     }
     private static var cachedStates: CachedStates?
 
+    enum ProjectionMode {
+        case orthographic
+        case perspective
+    }
+
     let device: MTLDevice
     let commandQueue: MTLCommandQueue
     let meshPipeline: MTLRenderPipelineState
@@ -715,6 +720,18 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         device.makeBuffer(bytes: &data,
                           length: data.count * MemoryLayout<T>.stride,
                           options: .storageModeShared)
+    }
+
+    static func perspectiveProjection(fovRadians: Float, aspect: Float, near: Float, far: Float) -> simd_float4x4 {
+        let f = 1 / tan(fovRadians / 2)
+        let zRange = far - near
+        // Metal NDC: z in [0, 1], camera looks down -Z, right-handed.
+        return simd_float4x4(
+            SIMD4<Float>(f / aspect, 0, 0, 0),
+            SIMD4<Float>(0, f, 0, 0),
+            SIMD4<Float>(0, 0, -far / zRange, -1),
+            SIMD4<Float>(0, 0, -(far * near) / zRange, 0)
+        )
     }
 
     static func orthographicProjection(left: Float, right: Float, bottom: Float, top: Float, near: Float, far: Float) -> simd_float4x4 {
