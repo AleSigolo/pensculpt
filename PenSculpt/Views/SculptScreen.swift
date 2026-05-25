@@ -35,6 +35,7 @@ struct SculptScreen: View {
     @State private var perspectiveFOV: Float = .pi / 180 * 50
     @State private var showFOVPopover: Bool = false
     @State private var rendererSetProjectionMode: ((SculptRenderer.ProjectionMode, Bool) -> Void)?
+    @State private var rendererSetPerspectiveFOV: ((Float) -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -56,6 +57,7 @@ struct SculptScreen: View {
             onDeformCursor: { deformCursor = $0 },
             onRendererReady: { replace, morph, cacheBVH in Task { @MainActor in rendererReplaceMesh = replace; rendererMorphMesh = morph; rendererCacheBVH = cacheBVH } },
             onRendererSetProjectionMode: { setMode in Task { @MainActor in rendererSetProjectionMode = setMode } },
+            onRendererSetPerspectiveFOV: { setFOV in Task { @MainActor in rendererSetPerspectiveFOV = setFOV } },
             onViewReady: { view in Task { @MainActor in metalView = view } }
         )
         .ignoresSafeArea()
@@ -220,6 +222,37 @@ struct SculptScreen: View {
                         }
                     }
                 )
+                .popover(isPresented: $showFOVPopover, arrowEdge: .top) {
+                    VStack(spacing: 12) {
+                        Text("Field of View")
+                            .font(.subheadline.weight(.medium))
+                        HStack {
+                            Text("20°")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            Slider(
+                                value: Binding(
+                                    get: { Double(perspectiveFOV * 180 / .pi) },
+                                    set: { newDegrees in
+                                        perspectiveFOV = Float(newDegrees) * .pi / 180
+                                        rendererSetPerspectiveFOV?(perspectiveFOV)
+                                    }
+                                ),
+                                in: 20...90,
+                                step: 1
+                            )
+                            .frame(width: 220)
+                            Text("90°")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("\(Int(perspectiveFOV * 180 / .pi))°")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(16)
+                    .presentationCompactAdaptation(.popover)
+                }
                 .tooltip(.sculptPerspective)
 
                 Button {

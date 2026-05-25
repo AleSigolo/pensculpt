@@ -72,6 +72,7 @@ struct MetalCanvasView: UIViewRepresentable {
     var onDeformCursor: (((position: CGPoint, radius: CGFloat)?) -> Void)?
     var onRendererReady: ((@escaping (UUID, Mesh, [SurfaceStroke]?) -> Void, @escaping (UUID, Mesh, [SurfaceStroke]?) -> Void, @escaping (UUID, MeshBVH) -> Void) -> Void)?
     var onRendererSetProjectionMode: ((@escaping (SculptRenderer.ProjectionMode, Bool) -> Void) -> Void)?
+    var onRendererSetPerspectiveFOV: ((@escaping (Float) -> Void) -> Void)?
     var onViewReady: ((MTKView) -> Void)?
 
     func makeUIView(context: Context) -> ForceMTKView {
@@ -104,6 +105,10 @@ struct MetalCanvasView: UIViewRepresentable {
 
         onRendererSetProjectionMode?({ [weak renderer] mode, animated in
             renderer?.setProjectionMode(mode, animated: animated)
+        })
+
+        onRendererSetPerspectiveFOV?({ [weak renderer] fov in
+            renderer?.perspectiveFOV = fov
         })
 
         let panGesture = UIPanGestureRecognizer(target: context.coordinator,
