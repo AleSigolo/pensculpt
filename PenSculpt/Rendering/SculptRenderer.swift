@@ -68,8 +68,8 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     }
     private var bufferCache: [UUID: MeshBuffers] = [:]
     private var bvhCache: [UUID: MeshBVH] = [:]
-    var combinedCenter = SIMD3<Float>(0, 0, 0)  // Internal for test access via extension
-    var combinedRadius: Float = 1               // Internal for test access via extension
+    private var combinedCenter = SIMD3<Float>(0, 0, 0)
+    private(set) var combinedRadius: Float = 1
 
     var projectionMode: ProjectionMode = .orthographic
     var perspectiveFOV: Float = .pi / 180 * 50  // 50° default
@@ -257,6 +257,13 @@ class SculptRenderer: NSObject, MTKViewDelegate {
             bottom: -r, top: r,
             near: -r * 10, far: r * 10
         )
+        let viewOrtho = simd_float4x4(rotation) * translationMatrix(-combinedCenter.x, -combinedCenter.y, -combinedCenter.z)
+
+        // Default-path short-circuit: avoid recomputing perspective every frame
+        // while in ortho mode (perspective is opt-in, so this is the hot path).
+        if projectionTransition == 0 {
+            return mOrtho * viewOrtho
+        }
 
         // For perspective, position the camera at a distance that preserves the
         // framing: an object of radius r should fill the same vertical fraction
@@ -265,13 +272,16 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         let mPersp = Self.perspectiveProjection(
             fovRadians: perspectiveFOV,
             aspect: aspect,
-            near: max(cameraDistance - r * 10, 0.01),
+            // Camera is at d ≈ r/tan(fov/2); object spans [-r, r] around origin.
+            // Set near a bit closer than the front of the object (1.2 × r margin)
+            // to keep z-buffer precision tight on the visible mesh while leaving
+            // room for surface strokes that sit slightly above the surface.
+            near: max(cameraDistance - r * 1.2, 0.01),
             far: cameraDistance + r * 10
         )
         // Perspective view matrix needs the extra camera-distance translation
         // along -Z (camera looks down -Z), composed with rotation about origin
         // and translation of object center to origin.
-        let viewOrtho = simd_float4x4(rotation) * translationMatrix(-combinedCenter.x, -combinedCenter.y, -combinedCenter.z)
         let viewPersp = translationMatrix(0, 0, -cameraDistance) * viewOrtho
 
         let mvpOrtho = mOrtho * viewOrtho
@@ -303,6 +313,17 @@ class SculptRenderer: NSObject, MTKViewDelegate {
             combinedRadius = max(extent.x, max(extent.y, extent.z)) / 2 * 1.3
         }
     }
+
+    #if DEBUG
+    /// Test-only: directly set the combined bounds without running the bounds
+    /// computation. Used by SculptRendererProjectionTests to construct a
+    /// renderer with deterministic bounds.
+    func setCombinedBoundsForTesting(center: SIMD3<Float>, radius: Float) {
+        self.combinedCenter = center
+        self.combinedRadius = radius
+        self.rotation = simd_quatf(angle: 0, axis: SIMD3(0, 1, 0))
+    }
+    #endif
 
     // MARK: - Surface stroke rendering
 

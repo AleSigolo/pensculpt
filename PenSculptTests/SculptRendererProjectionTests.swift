@@ -129,18 +129,11 @@ final class SculptRendererProjectionTests: XCTestCase {
     }
 }
 
-// MARK: - Test helpers (mirror of internals to keep tests self-contained)
+// MARK: - Test helpers
 
 extension SculptRenderer {
     static func makeForTesting() -> SculptRenderer {
         let device = MTLCreateSystemDefaultDevice()!
         return SculptRenderer(device: device)!
-    }
-
-    func setCombinedBoundsForTesting(center: SIMD3<Float>, radius: Float) {
-        self.combinedCenter = center
-        self.combinedRadius = radius
-        // Lock rotation to identity so tests have a deterministic view matrix.
-        self.rotation = simd_quatf(angle: 0, axis: SIMD3(0, 1, 0))
     }
 }
