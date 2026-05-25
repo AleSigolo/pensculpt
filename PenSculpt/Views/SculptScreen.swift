@@ -420,11 +420,12 @@ struct SculptScreen: View {
     private func autoReInfer(objectID: UUID, newStrokeIDs: Set<UUID>) {
         guard let idx = sculptObjects.firstIndex(where: { $0.id == objectID }) else { return }
         let oldStrokes = sculptObjects[idx].surfaceStrokes
+        let mode = sculptObjects[idx].inflationMode
         isReInferring = true
         let sourceStrokes = strokes
         let cfg = config
         Task.detached {
-            let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg)
+            let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg, inflationMode: mode)
             let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: newObj.mesh, config: cfg)
             let bvh = MeshBVH(mesh: newObj.mesh)
             await MainActor.run {
@@ -445,12 +446,13 @@ struct SculptScreen: View {
         guard activeObjectIndex < sculptObjects.count, !isReInferring else { return }
         let id = sculptObjects[activeObjectIndex].id
         let oldStrokes = sculptObjects[activeObjectIndex].surfaceStrokes
+        let mode = sculptObjects[activeObjectIndex].inflationMode
         let sourceStrokes = strokes
         let cfg = config
         isReInferring = true
 
         Task.detached {
-            let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg)
+            let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg, inflationMode: mode)
             let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: newObj.mesh, config: cfg)
             let bvh = MeshBVH(mesh: newObj.mesh)
             await MainActor.run {
@@ -470,12 +472,13 @@ struct SculptScreen: View {
         guard activeObjectIndex < sculptObjects.count, !isReInferring else { return }
         let id = sculptObjects[activeObjectIndex].id
         let oldStrokes = sculptObjects[activeObjectIndex].surfaceStrokes
+        let mode = sculptObjects[activeObjectIndex].inflationMode
         let sourceStrokes = strokes
         let cfg = config
         isReInferring = true
 
         Task.detached {
-            let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg)
+            let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg, inflationMode: mode)
             let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: newObj.mesh, config: cfg)
             let bvh = MeshBVH(mesh: newObj.mesh)
             await MainActor.run {

@@ -4,8 +4,8 @@ import simd
 enum ShapeInflater {
 
     /// Runs the full inference pipeline: strokes → inflated 3D mesh → SculptObject.
-    static func sculpt(from strokes: [Stroke], config: SculptConfig = .default) -> SculptObject {
-        let mesh = inflate(strokes: strokes, config: config)
+    static func sculpt(from strokes: [Stroke], config: SculptConfig = .default, inflationMode: InflationMode = .organic) -> SculptObject {
+        let mesh = inflate(strokes: strokes, config: config, inflationMode: inflationMode)
         let allPoints = strokes.flatMap { $0.points.map(\.location) }
         let xs = allPoints.map(\.x), ys = allPoints.map(\.y)
         let originRect = CGRect(
@@ -13,7 +13,8 @@ enum ShapeInflater {
             width: (xs.max() ?? 0) - (xs.min() ?? 0),
             height: (ys.max() ?? 0) - (ys.min() ?? 0)
         )
-        return SculptObject(mesh: mesh, sourceStrokeIDs: Set(strokes.map(\.id)), originRect: originRect)
+        return SculptObject(mesh: mesh, sourceStrokeIDs: Set(strokes.map(\.id)),
+                            originRect: originRect, inflationMode: inflationMode)
     }
 
     /// Inflates a 2D contour into a closed 3D mesh by using edge distance as depth.
