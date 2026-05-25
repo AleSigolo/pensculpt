@@ -1,6 +1,24 @@
 import SwiftUI
 import PencilKit
 
+/// PKCanvasView subclass that suppresses the system edit menu
+/// ("Select All / Insert Space" on finger long-press) when the
+/// canvas is non-interactive (i.e., the app is in select mode).
+final class DrawingCanvasView: PKCanvasView {
+    /// When true, the canvas refuses first-responder status and
+    /// rejects all menu actions — stops the native PKCanvasView
+    /// edit menu from appearing on finger long-press in select mode.
+    var blockEditMenu: Bool = false
+
+    override var canBecomeFirstResponder: Bool {
+        blockEditMenu ? false : super.canBecomeFirstResponder
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        blockEditMenu ? false : super.canPerformAction(action, withSender: sender)
+    }
+}
+
 struct CanvasView: UIViewRepresentable {
     @Binding var drawing: PKDrawing
     var selectedTool: DrawingTool
@@ -13,7 +31,7 @@ struct CanvasView: UIViewRepresentable {
     var viewBridge: ViewBridge?
 
     func makeUIView(context: Context) -> PKCanvasView {
-        let canvasView = PKCanvasView()
+        let canvasView = DrawingCanvasView()
         canvasView.drawing = drawing
         canvasView.tool = pkTool(for: selectedTool)
         canvasView.drawingPolicy = .pencilOnly
@@ -34,6 +52,9 @@ struct CanvasView: UIViewRepresentable {
 
     func updateUIView(_ canvasView: PKCanvasView, context: Context) {
         canvasView.isUserInteractionEnabled = isInteractive
+        if let drawingCanvas = canvasView as? DrawingCanvasView {
+            drawingCanvas.blockEditMenu = !isInteractive
+        }
         canvasView.tool = pkTool(for: selectedTool)
         if canvasView.drawing != drawing {
             // Reset tracking BEFORE setting drawing — the setter may fire
