@@ -144,22 +144,22 @@ struct SculptScreen: View {
             .tooltip(.sculptClose)
 
             Button(action: reInfer) {
-                if isReInferring {
-                    ProgressView()
-                } else {
+                ZStack {
                     Image(systemName: "arrow.clockwise.circle.fill")
                         .font(.title)
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.secondary)
+                        .opacity(isReInferring ? 0 : 1)
+                    if isReInferring {
+                        ProgressView()
+                    }
                 }
             }
             .disabled(isReInferring)
             .tooltip(.sculptReinfer)
 
             Button(action: reInferMorph) {
-                if isReInferring {
-                    ProgressView()
-                } else {
+                ZStack {
                     VStack(spacing: 2) {
                         Image(systemName: "sparkles")
                             .font(.title3)
@@ -167,6 +167,10 @@ struct SculptScreen: View {
                             .font(.system(size: 8))
                     }
                     .foregroundStyle(.secondary)
+                    .opacity(isReInferring ? 0 : 1)
+                    if isReInferring {
+                        ProgressView()
+                    }
                 }
             }
             .disabled(isReInferring)
@@ -518,8 +522,30 @@ struct SculptScreen: View {
     }
 
     private static func reprojectStrokes(_ strokes: [SurfaceStroke], onto mesh: Mesh, config: SculptConfig) -> [SurfaceStroke] {
+        // Cast rays from far above the mesh straight down. Using the stroke's
+        // original z as the ray origin breaks when the new mesh is taller
+        // than where the old stroke sat (e.g., toggling organic → straight,
+        // where the cube top is higher than the dome surface everywhere
+        // except the center). Lifting every origin to a high z guarantees
+        // the ray hits the new mesh's front face from above.
         let rayDir = SIMD3<Float>(0, 0, -1)
-        return strokes.compactMap { $0.reprojected(onto: mesh, rayDir: rayDir, offset: config.surfaceStrokeOffset, maxTJump: config.surfaceStrokeMaxTJump) }
+        let liftedZ: Float = 10_000
+        return strokes.compactMap { stroke in
+            let liftedPoints = stroke.points.map { SIMD3<Float>($0.x, $0.y, liftedZ) }
+            let lifted = SurfaceStroke(
+                id: stroke.id,
+                points: liftedPoints,
+                widths: stroke.widths,
+                opacity: stroke.opacity,
+                color: stroke.color
+            )
+            return lifted.reprojected(
+                onto: mesh,
+                rayDir: rayDir,
+                offset: config.surfaceStrokeOffset,
+                maxTJump: config.surfaceStrokeMaxTJump
+            )
+        }
     }
 
     // MARK: - Export
