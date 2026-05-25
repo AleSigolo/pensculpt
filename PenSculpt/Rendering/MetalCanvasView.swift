@@ -71,6 +71,7 @@ struct MetalCanvasView: UIViewRepresentable {
     var onMeshDeformed: ((UUID, Mesh, [SurfaceStroke]) -> Void)?
     var onDeformCursor: (((position: CGPoint, radius: CGFloat)?) -> Void)?
     var onRendererReady: ((@escaping (UUID, Mesh, [SurfaceStroke]?) -> Void, @escaping (UUID, Mesh, [SurfaceStroke]?) -> Void, @escaping (UUID, MeshBVH) -> Void) -> Void)?
+    var onRendererSetProjectionMode: ((@escaping (SculptRenderer.ProjectionMode, Bool) -> Void) -> Void)?
     var onViewReady: ((MTKView) -> Void)?
 
     func makeUIView(context: Context) -> ForceMTKView {
@@ -100,6 +101,10 @@ struct MetalCanvasView: UIViewRepresentable {
                 renderer?.cacheBVH(bvh, for: objectID)
             }
         )
+
+        onRendererSetProjectionMode?({ [weak renderer] mode, animated in
+            renderer?.setProjectionMode(mode, animated: animated)
+        })
 
         let panGesture = UIPanGestureRecognizer(target: context.coordinator,
                                                  action: #selector(Coordinator.handlePan(_:)))

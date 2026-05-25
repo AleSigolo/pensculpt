@@ -31,6 +31,10 @@ struct SculptScreen: View {
     @State private var pendingMeshFormat: MeshFormat?
     @State private var showScopeDialog = false
     @State private var showColorPopover = false
+    @State private var projectionMode: SculptRenderer.ProjectionMode = .orthographic
+    @State private var perspectiveFOV: Float = .pi / 180 * 50
+    @State private var showFOVPopover: Bool = false
+    @State private var rendererSetProjectionMode: ((SculptRenderer.ProjectionMode, Bool) -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -51,6 +55,7 @@ struct SculptScreen: View {
             onMeshDeformed: handleMeshDeformed,
             onDeformCursor: { deformCursor = $0 },
             onRendererReady: { replace, morph, cacheBVH in Task { @MainActor in rendererReplaceMesh = replace; rendererMorphMesh = morph; rendererCacheBVH = cacheBVH } },
+            onRendererSetProjectionMode: { setMode in Task { @MainActor in rendererSetProjectionMode = setMode } },
             onViewReady: { view in Task { @MainActor in metalView = view } }
         )
         .ignoresSafeArea()
@@ -193,6 +198,30 @@ struct SculptScreen: View {
         }
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 12) {
+                Button {
+                    let newMode: SculptRenderer.ProjectionMode =
+                        (projectionMode == .orthographic) ? .perspective : .orthographic
+                    projectionMode = newMode
+                    rendererSetProjectionMode?(newMode, true)
+                    if newMode == .orthographic {
+                        showFOVPopover = false
+                    }
+                } label: {
+                    Image(systemName: projectionMode == .perspective ? "view.3d" : "view.2d")
+                        .font(.title2)
+                        .foregroundStyle(projectionMode == .perspective ? .blue : .secondary)
+                        .frame(width: 50, height: 50)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.4).onEnded { _ in
+                        if projectionMode == .perspective {
+                            showFOVPopover = true
+                        }
+                    }
+                )
+                .tooltip(.sculptPerspective)
+
                 Button {
                     if isDeformMode {
                         isSmoothMode.toggle()
