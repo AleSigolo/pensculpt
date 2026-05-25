@@ -42,6 +42,7 @@ enum TooltipID: String, CaseIterable {
     // Sculpt — corners
     case sculptRotate
     case sculptPerspective
+    case sculptFOV
     case sculptEraser
     case sculptDeform
 
@@ -69,7 +70,8 @@ enum TooltipID: String, CaseIterable {
         case .sculptColorSwatch:  return .init(title: "Color", subtitle: "Active color for new surface strokes")
         case .sculptSurfaceSpace: return .init(title: "Stroke space", subtitle: "Toggle strokes anchored to the surface or to the screen")
         case .sculptRotate:       return .init(title: "Rotate", subtitle: "Hold and drag to rotate the 3D view")
-        case .sculptPerspective:  return .init(title: "Perspective", subtitle: "Toggle between orthographic and perspective projection · Hold to adjust FOV")
+        case .sculptPerspective:  return .init(title: "Perspective", subtitle: "Toggle between orthographic and perspective projection")
+        case .sculptFOV:          return .init(title: "Field of view", subtitle: "Adjust how strong the perspective looks")
         case .sculptEraser:       return .init(title: "Eraser / Smoother", subtitle: "Erases strokes; while in deform mode, smooths the surface")
         case .sculptDeform:       return .init(title: "Deform", subtitle: "Push and pull the 3D surface with the Pencil")
         }

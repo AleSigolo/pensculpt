@@ -215,45 +215,51 @@ struct SculptScreen: View {
                         .frame(width: 50, height: 50)
                         .background(.ultraThinMaterial, in: Circle())
                 }
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.4).onEnded { _ in
-                        if projectionMode == .perspective {
-                            showFOVPopover = true
-                        }
-                    }
-                )
-                .popover(isPresented: $showFOVPopover, arrowEdge: .top) {
-                    VStack(spacing: 12) {
-                        Text("Field of View")
-                            .font(.subheadline.weight(.medium))
-                        HStack {
-                            Text("20°")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            Slider(
-                                value: Binding(
-                                    get: { Double(perspectiveFOV * 180 / .pi) },
-                                    set: { newDegrees in
-                                        perspectiveFOV = Float(newDegrees) * .pi / 180
-                                        rendererSetPerspectiveFOV?(perspectiveFOV)
-                                    }
-                                ),
-                                in: 20...90,
-                                step: 1
-                            )
-                            .frame(width: 220)
-                            Text("90°")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        Text("\(Int(perspectiveFOV * 180 / .pi))°")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(16)
-                    .presentationCompactAdaptation(.popover)
-                }
                 .tooltip(.sculptPerspective)
+
+                if projectionMode == .perspective {
+                    Button {
+                        showFOVPopover.toggle()
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.title2)
+                            .foregroundStyle(showFOVPopover ? .blue : .secondary)
+                            .frame(width: 50, height: 50)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .popover(isPresented: $showFOVPopover, arrowEdge: .top) {
+                        VStack(spacing: 12) {
+                            Text("Field of View")
+                                .font(.subheadline.weight(.medium))
+                            HStack {
+                                Text("20°")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Slider(
+                                    value: Binding(
+                                        get: { Double(perspectiveFOV * 180 / .pi) },
+                                        set: { newDegrees in
+                                            perspectiveFOV = Float(newDegrees) * .pi / 180
+                                            rendererSetPerspectiveFOV?(perspectiveFOV)
+                                        }
+                                    ),
+                                    in: 20...90,
+                                    step: 1
+                                )
+                                .frame(width: 220)
+                                Text("90°")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text("\(Int(perspectiveFOV * 180 / .pi))°")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(16)
+                        .presentationCompactAdaptation(.popover)
+                    }
+                    .tooltip(.sculptFOV)
+                }
 
                 Button {
                     if isDeformMode {
