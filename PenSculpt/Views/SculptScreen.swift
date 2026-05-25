@@ -198,7 +198,7 @@ struct SculptScreen: View {
                 .tooltip(.sculptRotate)
                 .padding(20)
         }
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: .topTrailing) {
             HStack(spacing: 12) {
                 Button {
                     let newMode: SculptRenderer.ProjectionMode =
@@ -210,10 +210,9 @@ struct SculptScreen: View {
                     }
                 } label: {
                     Image(systemName: projectionMode == .perspective ? "view.3d" : "view.2d")
-                        .font(.title2)
+                        .font(.title)
+                        .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(projectionMode == .perspective ? .blue : .secondary)
-                        .frame(width: 50, height: 50)
-                        .background(.ultraThinMaterial, in: Circle())
                 }
                 .tooltip(.sculptPerspective)
 
@@ -222,10 +221,9 @@ struct SculptScreen: View {
                         showFOVPopover.toggle()
                     } label: {
                         Image(systemName: "slider.horizontal.3")
-                            .font(.title2)
+                            .font(.title)
+                            .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(showFOVPopover ? .blue : .secondary)
-                            .frame(width: 50, height: 50)
-                            .background(.ultraThinMaterial, in: Circle())
                     }
                     .popover(isPresented: $showFOVPopover, arrowEdge: .top) {
                         VStack(spacing: 12) {
@@ -260,7 +258,11 @@ struct SculptScreen: View {
                     }
                     .tooltip(.sculptFOV)
                 }
-
+            }
+            .padding()
+        }
+        .overlay(alignment: .bottomTrailing) {
+            HStack(spacing: 12) {
                 Button {
                     if isDeformMode {
                         isSmoothMode.toggle()
