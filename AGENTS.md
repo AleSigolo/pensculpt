@@ -24,17 +24,17 @@ PenSculpt is an iPad drawing app for Apple Pencil that lets users draw in 2D and
 | Document model | ReferenceFileDocument | Pairs with UndoManager, supports incremental saves |
 | File format | .pensculpt package | JSON strokes + binary mesh data + thumbnail |
 | Camera | Orthographic (default) | Matches flat drawing aesthetic when entering sculpt mode |
-| Selection | SelectionStrategy protocol | Extensible for future grow-selection and other strategies |
+| Selection | SelectionStrategy marker protocol | Lasso + Grow strategies coexist via concrete static APIs; protocol documents the family |
 
 ## Project Structure
 
 ```
 PenSculpt/
 ├── App/           — App entry point, DocumentGroup scene
-├── Models/        — Stroke, StrokePoint, Canvas, StrokeGroup, SculptObject
+├── Models/        — Stroke, StrokePoint, Canvas, SculptObject
 ├── Drawing/       — PencilKit integration (CanvasView, StrokeConverter)
+│   └── Selection/ — SelectionStrategy protocol, LassoStrategy, GrowStrategy
 ├── Views/         — SwiftUI views (DrawingScreen, FloatingToolbar)
-├── Selection/     — SelectionStrategy protocol and implementations
 ├── Inference/     — 3D shape inference pipeline (contour, skeleton, fitting, assembly)
 ├── Renderer/      — Custom Metal renderer (mesh, strokes, shaders)
 ├── Persistence/   — PenSculptDocument, file format handling
