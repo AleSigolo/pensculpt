@@ -725,13 +725,16 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     static func perspectiveProjection(fovRadians: Float, aspect: Float, near: Float, far: Float) -> simd_float4x4 {
         let f = 1 / tan(fovRadians / 2)
         let zRange = far - near
-        // Metal NDC: z in [0, 1], camera looks down -Z, right-handed.
-        return simd_float4x4(
+        // Vertical FOV. NDC z in [-1, 1] to match orthographicProjection's
+        // convention so the two matrices can be interpolated component-wise
+        // without producing non-monotonic depth during the projection-mode
+        // transition animation.
+        return simd_float4x4(columns: (
             SIMD4<Float>(f / aspect, 0, 0, 0),
             SIMD4<Float>(0, f, 0, 0),
-            SIMD4<Float>(0, 0, -far / zRange, -1),
-            SIMD4<Float>(0, 0, -(far * near) / zRange, 0)
-        )
+            SIMD4<Float>(0, 0, -(far + near) / zRange, -1),
+            SIMD4<Float>(0, 0, -2 * far * near / zRange, 0)
+        ))
     }
 
     static func orthographicProjection(left: Float, right: Float, bottom: Float, top: Float, near: Float, far: Float) -> simd_float4x4 {

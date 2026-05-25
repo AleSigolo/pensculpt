@@ -5,16 +5,15 @@ import simd
 final class SculptRendererProjectionTests: XCTestCase {
 
     func testPerspectiveProjectionPlacesCenterAtNDCOrigin() {
-        // A point at the camera-space origin (0, 0, -near_distance) should
-        // project to (0, 0) in NDC xy regardless of FOV.
+        // A point on the camera forward axis (any z in the frustum) should
+        // project to NDC xy = (0, 0) regardless of FOV.
         let m = SculptRenderer.perspectiveProjection(
             fovRadians: .pi / 4,  // 45°
             aspect: 1.5,
             near: 1.0,
             far: 100.0
         )
-        // Apply matrix to a point right in front of the camera at z = -10.
-        // (Conventional Metal: camera looks down -Z.)
+        // Camera looks down -Z; this point is 10 units in front of camera.
         let p = SIMD4<Float>(0, 0, -10, 1)
         let clip = m * p
         let ndc = SIMD3<Float>(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w)
@@ -51,5 +50,22 @@ final class SculptRendererProjectionTests: XCTestCase {
         let x90 = (m90 * p).x / (m90 * p).w
         XCTAssertGreaterThan(abs(x30), abs(x90),
                              "narrower FOV magnifies, wider FOV shrinks")
+    }
+
+    func testPerspectiveProjectionMapsZToGLNDC() {
+        // GL convention: a point on the near plane (z_view = -near) maps to
+        // NDC z = -1; a point on the far plane (z_view = -far) maps to NDC z = 1.
+        // This matches orthographicProjection so the two can be lerped.
+        let m = SculptRenderer.perspectiveProjection(
+            fovRadians: .pi / 4, aspect: 1.0, near: 1.0, far: 100.0
+        )
+        let onNear = SIMD4<Float>(0, 0, -1.0, 1)
+        let onFar = SIMD4<Float>(0, 0, -100.0, 1)
+        let zNear = (m * onNear).z / (m * onNear).w
+        let zFar = (m * onFar).z / (m * onFar).w
+        XCTAssertEqual(zNear, -1, accuracy: 1e-5,
+                       "near plane should map to NDC z = -1 (GL convention)")
+        XCTAssertEqual(zFar, 1, accuracy: 1e-5,
+                       "far plane should map to NDC z = 1 (GL convention)")
     }
 }
