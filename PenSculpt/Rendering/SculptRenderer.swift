@@ -68,8 +68,13 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     }
     private var bufferCache: [UUID: MeshBuffers] = [:]
     private var bvhCache: [UUID: MeshBVH] = [:]
-    private var combinedCenter = SIMD3<Float>(0, 0, 0)
-    private(set) var combinedRadius: Float = 1
+    var combinedCenter = SIMD3<Float>(0, 0, 0)  // Internal for test access via extension
+    var combinedRadius: Float = 1               // Internal for test access via extension
+
+    var projectionMode: ProjectionMode = .orthographic
+    var perspectiveFOV: Float = .pi / 180 * 50  // 50° default
+    /// 0 = pure ortho, 1 = pure perspective. Animated by updateProjectionTransition().
+    var projectionTransition: Float = 0
 
     private struct MorphState {
         let objectID: UUID
@@ -243,16 +248,43 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         rotation = (qz * rotation).normalized
     }
 
-    private func combinedProjection(viewSize: CGSize) -> simd_float4x4 {
+    func combinedProjection(viewSize: CGSize) -> simd_float4x4 {
         let r = combinedRadius
         let aspect = Float(viewSize.width) / Float(viewSize.height)
-        let proj = Self.orthographicProjection(
+
+        let mOrtho = Self.orthographicProjection(
             left: -r * aspect, right: r * aspect,
             bottom: -r, top: r,
             near: -r * 10, far: r * 10
         )
-        let view = simd_float4x4(rotation) * translationMatrix(-combinedCenter.x, -combinedCenter.y, -combinedCenter.z)
-        return proj * view
+
+        // For perspective, position the camera at a distance that preserves the
+        // framing: an object of radius r should fill the same vertical fraction
+        // as in ortho. Distance d satisfies r / d = tan(fov/2), so d = r / tan(fov/2).
+        let cameraDistance = r / tan(perspectiveFOV / 2)
+        let mPersp = Self.perspectiveProjection(
+            fovRadians: perspectiveFOV,
+            aspect: aspect,
+            near: max(cameraDistance - r * 10, 0.01),
+            far: cameraDistance + r * 10
+        )
+        // Perspective view matrix needs the extra camera-distance translation
+        // along -Z (camera looks down -Z), composed with rotation about origin
+        // and translation of object center to origin.
+        let viewOrtho = simd_float4x4(rotation) * translationMatrix(-combinedCenter.x, -combinedCenter.y, -combinedCenter.z)
+        let viewPersp = translationMatrix(0, 0, -cameraDistance) * viewOrtho
+
+        let mvpOrtho = mOrtho * viewOrtho
+        let mvpPersp = mPersp * viewPersp
+
+        // Component-wise lerp. Linear is good enough for a 0.3s tween between
+        // visually similar framings (both use GL NDC z ∈ [-1, 1] after Task 1).
+        let t = projectionTransition
+        var result = simd_float4x4()
+        for col in 0..<4 {
+            result[col] = mvpOrtho[col] * (1 - t) + mvpPersp[col] * t
+        }
+        return result
     }
 
     private func recomputeCombinedBounds() {

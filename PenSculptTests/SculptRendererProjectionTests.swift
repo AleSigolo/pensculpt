@@ -68,4 +68,79 @@ final class SculptRendererProjectionTests: XCTestCase {
         XCTAssertEqual(zFar, 1, accuracy: 1e-5,
                        "far plane should map to NDC z = 1 (GL convention)")
     }
+
+    func testCombinedProjectionAtTransitionZeroEqualsOrtho() {
+        // Regression check: with projectionTransition = 0, output equals the
+        // pre-feature orthographic projection so existing scenes don't shift.
+        let renderer = SculptRenderer.makeForTesting()
+        renderer.setCombinedBoundsForTesting(center: .zero, radius: 1.0)
+        renderer.projectionTransition = 0.0
+
+        let mvp = renderer.combinedProjection(viewSize: CGSize(width: 200, height: 100))
+
+        // A point at (1, 0, 0) in world space, with zero rotation, maps to
+        // x_ndc = 1 / (combinedRadius * aspect) under the existing ortho.
+        let p = SIMD4<Float>(1, 0, 0, 1)
+        let clip = mvp * p
+        let x_ndc = clip.x / clip.w
+        XCTAssertEqual(x_ndc, 0.5, accuracy: 1e-4,
+                       "ortho with r=1, aspect=2 puts x=1 at NDC 0.5")
+    }
+
+    func testCombinedProjectionAtTransitionOneIsPurePerspective() {
+        // With projectionTransition = 1, MVP equals the perspective matrix
+        // composed with view (rotation + translation).
+        let renderer = SculptRenderer.makeForTesting()
+        renderer.setCombinedBoundsForTesting(center: .zero, radius: 1.0)
+        renderer.projectionTransition = 1.0
+        renderer.perspectiveFOV = .pi / 4
+
+        let mvp = renderer.combinedProjection(viewSize: CGSize(width: 100, height: 100))
+        // A point at world origin maps to NDC (0, 0) under both modes.
+        let p = SIMD4<Float>(0, 0, 0, 1)
+        let clip = mvp * p
+        XCTAssertEqual(clip.x / clip.w, 0, accuracy: 1e-3)
+        XCTAssertEqual(clip.y / clip.w, 0, accuracy: 1e-3)
+    }
+
+    func testCombinedProjectionInterpolatesLinearly() {
+        // At transition = 0.5, each component of the resulting matrix should
+        // be the average of the two endpoints.
+        let renderer = SculptRenderer.makeForTesting()
+        renderer.setCombinedBoundsForTesting(center: .zero, radius: 1.0)
+        renderer.perspectiveFOV = .pi / 4
+
+        renderer.projectionTransition = 0.0
+        let mOrtho = renderer.combinedProjection(viewSize: CGSize(width: 100, height: 100))
+
+        renderer.projectionTransition = 1.0
+        let mPersp = renderer.combinedProjection(viewSize: CGSize(width: 100, height: 100))
+
+        renderer.projectionTransition = 0.5
+        let mMid = renderer.combinedProjection(viewSize: CGSize(width: 100, height: 100))
+
+        for col in 0..<4 {
+            for row in 0..<4 {
+                let expected = (mOrtho[col][row] + mPersp[col][row]) * 0.5
+                XCTAssertEqual(mMid[col][row], expected, accuracy: 1e-5,
+                               "component [\(col)][\(row)] should be the average")
+            }
+        }
+    }
+}
+
+// MARK: - Test helpers (mirror of internals to keep tests self-contained)
+
+extension SculptRenderer {
+    static func makeForTesting() -> SculptRenderer {
+        let device = MTLCreateSystemDefaultDevice()!
+        return SculptRenderer(device: device)!
+    }
+
+    func setCombinedBoundsForTesting(center: SIMD3<Float>, radius: Float) {
+        self.combinedCenter = center
+        self.combinedRadius = radius
+        // Lock rotation to identity so tests have a deterministic view matrix.
+        self.rotation = simd_quatf(angle: 0, axis: SIMD3(0, 1, 0))
+    }
 }
