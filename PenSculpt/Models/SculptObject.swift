@@ -1,6 +1,11 @@
 import Foundation
 import simd
 
+enum InflationMode: String, Codable, Equatable, Sendable {
+    case organic
+    case straight
+}
+
 struct SurfaceStroke: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     var points: [SIMD3<Float>]
@@ -114,14 +119,17 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
     /// The 2D bounding rect of the source strokes in canvas coordinates.
     /// Used to map the 3D mesh back to its original position on the drawing canvas.
     var originRect: CGRect
+    var inflationMode: InflationMode = .organic
 
     init(id: UUID = UUID(), mesh: Mesh, sourceStrokeIDs: Set<UUID>,
-         surfaceStrokes: [SurfaceStroke] = [], originRect: CGRect = .zero) {
+         surfaceStrokes: [SurfaceStroke] = [], originRect: CGRect = .zero,
+         inflationMode: InflationMode = .organic) {
         self.id = id
         self.mesh = mesh
         self.sourceStrokeIDs = sourceStrokeIDs
         self.surfaceStrokes = surfaceStrokes
         self.originRect = originRect
+        self.inflationMode = inflationMode
     }
 
     init(from decoder: Decoder) throws {
@@ -131,5 +139,6 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
         sourceStrokeIDs = try container.decode(Set<UUID>.self, forKey: .sourceStrokeIDs)
         surfaceStrokes = try container.decodeIfPresent([SurfaceStroke].self, forKey: .surfaceStrokes) ?? []
         originRect = try container.decodeIfPresent(CGRect.self, forKey: .originRect) ?? .zero
+        inflationMode = try container.decodeIfPresent(InflationMode.self, forKey: .inflationMode) ?? .organic
     }
 }

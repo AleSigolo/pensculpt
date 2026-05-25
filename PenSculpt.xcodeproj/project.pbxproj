@@ -56,6 +56,7 @@
 		A1B13952B16B6F047B7386A0 /* StrokeConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813766FA9ABE79F98BC8DB4B /* StrokeConverterTests.swift */; };
 		A7CB08EBF505CA481153743E /* SelectionHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F303B02A43E5A69689623C /* SelectionHighlight.swift */; };
 		AE6DD59F89FB1586FEB88CAA /* TooltipIDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4CC03BE544F4F42A83D4FE8 /* TooltipIDTests.swift */; };
+		FC628B3EBC2444B68E84E636 /* SculptObjectInflationModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F20F405A6384765B4974A2F /* SculptObjectInflationModeTests.swift */; };
 		B5A4C83261EE3A1AD40B5ACF /* SculptConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8D346B753BC55596B1529C /* SculptConfig.swift */; };
 		B928BFE7A02DD3F36544CBF3 /* SculptScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9A3A784F078DB1D1BC21234 /* SculptScreen.swift */; };
 		BF8DD08CC50937BB44B37C5B /* ImageRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B496DFF4D0F3327DF0063CDF /* ImageRendererTests.swift */; };
@@ -152,6 +153,7 @@
 		F245D592E7D90A121589B369 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F45481EB403A5B9251F8CF76 /* SculptReopenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SculptReopenTests.swift; sourceTree = "<group>"; };
 		8B96A9A5D9F4407DB2BD83EC /* SculptRendererProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SculptRendererProjectionTests.swift; sourceTree = "<group>"; };
+		9F20F405A6384765B4974A2F /* SculptObjectInflationModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SculptObjectInflationModeTests.swift; sourceTree = "<group>"; };
 		F5DDE04C4BC411F753A4200E /* SculptRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SculptRendererTests.swift; sourceTree = "<group>"; };
 		F7C8C724D5F3C85D7B266210 /* BrushControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrushControls.swift; sourceTree = "<group>"; };
 		F916927F54CEFECA60D39986 /* DensityProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DensityProbe.swift; sourceTree = "<group>"; };
@@ -333,6 +335,7 @@
 				9CCD06DBCB1FE6874F66FDD0 /* PipelineDiagnosticTests.swift */,
 				6FF16522D54EBC36E2125515 /* PipelineVisualTests.swift */,
 				8B96A9A5D9F4407DB2BD83EC /* SculptRendererProjectionTests.swift */,
+				9F20F405A6384765B4974A2F /* SculptObjectInflationModeTests.swift */,
 				F5DDE04C4BC411F753A4200E /* SculptRendererTests.swift */,
 				F45481EB403A5B9251F8CF76 /* SculptReopenTests.swift */,
 				4180FF810D014CA3E921AB22 /* SelectionCoordinateTests.swift */,
@@ -445,6 +448,7 @@
 				DB9CA80ED8D893B96D963395 /* PipelineDiagnosticTests.swift in Sources */,
 				78BED971E7B366D934A0A725 /* PipelineVisualTests.swift in Sources */,
 				43ABE08CE4E1498F96CC8E6C /* SculptRendererProjectionTests.swift in Sources */,
+				FC628B3EBC2444B68E84E636 /* SculptObjectInflationModeTests.swift in Sources */,
 				2D7A7148DCDE1276F3BD3E35 /* SculptRendererTests.swift in Sources */,
 				302312306BB23F6D712057DD /* SculptReopenTests.swift in Sources */,
 				1E265D3AF6AA0BBA672A8B66 /* SelectionCoordinateTests.swift in Sources */,
