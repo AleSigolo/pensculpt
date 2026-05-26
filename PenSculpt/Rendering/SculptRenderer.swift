@@ -71,6 +71,11 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     private var combinedCenter = SIMD3<Float>(0, 0, 0)
     private(set) var combinedRadius: Float = 1
 
+    /// Minimum framing radius for small objects so they don't fill the viewport
+    /// and feel disproportionately large compared to how they were drawn.
+    /// In canvas coordinate space (~150pt ≈ 1.5cm on iPad).
+    private static let minCombinedRadius: Float = 150
+
     /// Logical projection mode. Mirrors the user-facing toggle state; the
     /// actual projection used by `combinedProjection` is driven by
     /// `projectionTransition`, which animates between modes.
@@ -338,7 +343,8 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         if minP.x < Float.infinity {
             combinedCenter = (minP + maxP) / 2
             let extent = maxP - minP
-            combinedRadius = max(extent.x, max(extent.y, extent.z)) / 2 * 1.3
+            let computed = max(extent.x, max(extent.y, extent.z)) / 2 * 1.3
+            combinedRadius = max(computed, Self.minCombinedRadius)
         }
     }
 
