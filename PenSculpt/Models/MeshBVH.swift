@@ -2,7 +2,7 @@ import simd
 
 /// Bounding Volume Hierarchy for accelerated ray casting against a Mesh.
 /// Reduces hit-test cost from O(faces) to ~O(log faces).
-struct MeshBVH {
+struct MeshBVH: Sendable {
     private var nodes: [Node] = []
     private var faceIndices: [Int] = []
     private let positions: [SIMD3<Float>]
@@ -89,8 +89,12 @@ struct MeshBVH {
 
     // MARK: - Query
 
-    /// Cast a ray and return the closest front-face hit (smallest t).
-    func raycast(origin: SIMD3<Float>, direction: SIMD3<Float>) -> (t: Float, faceIndex: Int)? {
+    /// Cast a ray and return the closest hit (smallest t).
+    /// `doubleSided`: when false (default) only camera-facing triangles are hit
+    /// (matches scene-side rays). When true, both faces are hittable — needed
+    /// when the ray points in the opposite direction (e.g. reprojection rays
+    /// that travel from above the mesh straight down).
+    func raycast(origin: SIMD3<Float>, direction: SIMD3<Float>, doubleSided: Bool = false) -> (t: Float, faceIndex: Int)? {
         guard !nodes.isEmpty else { return nil }
         let invDir = SIMD3<Float>(1 / direction.x, 1 / direction.y, 1 / direction.z)
 
@@ -116,7 +120,8 @@ struct MeshBVH {
                     let v1 = positions[Int(f.y)]
                     let v2 = positions[Int(f.z)]
                     if let t = Self.rayTriangleIntersect(origin: origin, direction: direction,
-                                                         v0: v0, v1: v1, v2: v2),
+                                                         v0: v0, v1: v1, v2: v2,
+                                                         doubleSided: doubleSided),
                        t < closestT {
                         closestT = t
                         hitFace = fi
@@ -148,14 +153,21 @@ struct MeshBVH {
     // MARK: - Ray-triangle (Moller-Trumbore, camera-facing)
     // The ray points from the scene side toward the camera, so camera-facing
     // triangles have a < 0 (their normal opposes the ray in the Moller-Trumbore sense).
+    // `doubleSided` accepts hits from either side (used by reprojection rays
+    // that travel opposite the scene→camera direction).
 
     private static func rayTriangleIntersect(origin: SIMD3<Float>, direction: SIMD3<Float>,
-                                              v0: SIMD3<Float>, v1: SIMD3<Float>, v2: SIMD3<Float>) -> Float? {
+                                              v0: SIMD3<Float>, v1: SIMD3<Float>, v2: SIMD3<Float>,
+                                              doubleSided: Bool) -> Float? {
         let edge1 = v1 - v0
         let edge2 = v2 - v0
         let h = cross(direction, edge2)
         let a = dot(edge1, h)
-        guard a < -1e-6 else { return nil }
+        if doubleSided {
+            guard abs(a) > 1e-6 else { return nil }
+        } else {
+            guard a < -1e-6 else { return nil }
+        }
         let f = 1.0 / a
         let s = origin - v0
         let u = f * dot(s, h)

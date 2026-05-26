@@ -94,8 +94,9 @@ final class SurfaceStrokeColorTests: XCTestCase {
             color: purple
         )
 
+        let bvh = MeshBVH(mesh: mesh)
         let reprojected = try XCTUnwrap(stroke.reprojected(
-            onto: mesh,
+            onto: bvh,
             rayDir: SIMD3<Float>(0, 0, -1),  // cast straight down onto the plane
             offset: 0
         ))

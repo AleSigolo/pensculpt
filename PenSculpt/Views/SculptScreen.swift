@@ -447,8 +447,8 @@ struct SculptScreen: View {
         let cfg = config
         Task.detached {
             let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg, inflationMode: mode)
-            let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: newObj.mesh, config: cfg)
             let bvh = MeshBVH(mesh: newObj.mesh)
+            let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: bvh, config: cfg)
             await MainActor.run {
                 if let idx = sculptObjects.firstIndex(where: { $0.id == objectID }) {
                     sculptObjects[idx].mesh = newObj.mesh
@@ -474,8 +474,8 @@ struct SculptScreen: View {
 
         Task.detached {
             let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg, inflationMode: mode)
-            let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: newObj.mesh, config: cfg)
             let bvh = MeshBVH(mesh: newObj.mesh)
+            let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: bvh, config: cfg)
             await MainActor.run {
                 if let idx = sculptObjects.firstIndex(where: { $0.id == id }) {
                     sculptObjects[idx].mesh = newObj.mesh
@@ -500,8 +500,8 @@ struct SculptScreen: View {
 
         Task.detached {
             let newObj = ShapeInflater.sculpt(from: sourceStrokes, config: cfg, inflationMode: mode)
-            let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: newObj.mesh, config: cfg)
             let bvh = MeshBVH(mesh: newObj.mesh)
+            let reprojected = oldStrokes.isEmpty ? [] : Self.reprojectStrokes(oldStrokes, onto: bvh, config: cfg)
             await MainActor.run {
                 if let idx = sculptObjects.firstIndex(where: { $0.id == id }) {
                     sculptObjects[idx].originRect = newObj.originRect
@@ -521,7 +521,7 @@ struct SculptScreen: View {
         }
     }
 
-    private static func reprojectStrokes(_ strokes: [SurfaceStroke], onto mesh: Mesh, config: SculptConfig) -> [SurfaceStroke] {
+    nonisolated private static func reprojectStrokes(_ strokes: [SurfaceStroke], onto bvh: MeshBVH, config: SculptConfig) -> [SurfaceStroke] {
         // Cast rays from far above the mesh straight down. Using the stroke's
         // original z as the ray origin breaks when the new mesh is taller
         // than where the old stroke sat (e.g., toggling organic → straight,
@@ -540,7 +540,7 @@ struct SculptScreen: View {
                 color: stroke.color
             )
             return lifted.reprojected(
-                onto: mesh,
+                onto: bvh,
                 rayDir: rayDir,
                 offset: config.surfaceStrokeOffset,
                 maxTJump: config.surfaceStrokeMaxTJump

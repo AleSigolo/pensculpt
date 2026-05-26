@@ -58,56 +58,27 @@ extension SurfaceStroke {
 
     /// Re-projects stroke points onto a new mesh by casting rays along `rayDir`.
     /// Points that miss the mesh are dropped. Returns nil if no points survive.
-    func reprojected(onto mesh: Mesh, rayDir: SIMD3<Float>, offset: Float, maxTJump: Float = 50) -> SurfaceStroke? {
+    /// Uses the BVH for O(log n) ray casts instead of brute-force face iteration.
+    func reprojected(onto bvh: MeshBVH, rayDir: SIMD3<Float>, offset: Float, maxTJump: Float = 50) -> SurfaceStroke? {
         var newPoints: [SIMD3<Float>] = []
         var newWidths: [Float] = []
         var lastT: Float = 0
 
         for i in 0..<points.count {
-            if let (hit, t) = Self.castOntoMesh(from: points[i], direction: rayDir, mesh: mesh, offset: offset) {
-                let isFirst = newPoints.isEmpty
-                if isFirst || abs(t - lastT) < maxTJump {
-                    newPoints.append(hit)
-                    newWidths.append(i < widths.count ? widths[i] : 3)
-                    lastT = t
-                }
+            guard let result = bvh.raycast(origin: points[i], direction: rayDir, doubleSided: true) else { continue }
+            let t = result.t
+            let isFirst = newPoints.isEmpty
+            if isFirst || abs(t - lastT) < maxTJump {
+                let hit = points[i] + t * rayDir - rayDir * offset
+                newPoints.append(hit)
+                newWidths.append(i < widths.count ? widths[i] : 3)
+                lastT = t
             }
         }
 
         guard newPoints.count > 1 else { return nil }
         return SurfaceStroke(id: id, points: newPoints, widths: newWidths,
                              opacity: opacity, color: color)
-    }
-
-    private static func castOntoMesh(from origin: SIMD3<Float>, direction: SIMD3<Float>,
-                                      mesh: Mesh, offset: Float) -> (SIMD3<Float>, Float)? {
-        var closestT: Float = Float.infinity
-        var hitPoint: SIMD3<Float>?
-
-        for face in mesh.faces {
-            let v0 = mesh.vertices[Int(face.indices.x)].position
-            let v1 = mesh.vertices[Int(face.indices.y)].position
-            let v2 = mesh.vertices[Int(face.indices.z)].position
-
-            let edge1 = v1 - v0, edge2 = v2 - v0
-            let h = cross(direction, edge2)
-            let a = dot(edge1, h)
-            guard a > 1e-6 else { continue }
-            let f = 1.0 / a
-            let s = origin - v0
-            let u = f * dot(s, h)
-            guard u >= 0 && u <= 1 else { continue }
-            let q = cross(s, edge1)
-            let v = f * dot(direction, q)
-            guard v >= 0 && u + v <= 1 else { continue }
-            let t = f * dot(edge2, q)
-            if t > 1e-6 && abs(t) < abs(closestT) {
-                closestT = t
-                hitPoint = origin + t * direction - direction * offset
-            }
-        }
-        guard let hp = hitPoint else { return nil }
-        return (hp, closestT)
     }
 }
 
