@@ -51,11 +51,22 @@ struct CanvasView: UIViewRepresentable {
     }
 
     func updateUIView(_ canvasView: PKCanvasView, context: Context) {
+        let wasInteractive = canvasView.isUserInteractionEnabled
         canvasView.isUserInteractionEnabled = isInteractive
         if let drawingCanvas = canvasView as? DrawingCanvasView {
             drawingCanvas.blockEditMenu = !isInteractive
         }
-        canvasView.tool = pkTool(for: selectedTool)
+        let realTool = pkTool(for: selectedTool)
+        if !wasInteractive && isInteractive {
+            // Returning from select mode — PKCanvasView's input pipeline can
+            // get stuck in a state where the Pencil stops drawing (cursor
+            // hover still works, no strokes land). Manual workaround the
+            // user discovered: tap a different tool and tap back. Replicate
+            // it here with a brief dummy swap so the canvas refreshes its
+            // gesture/tool state on the transition.
+            canvasView.tool = PKEraserTool(.vector)
+        }
+        canvasView.tool = realTool
         if canvasView.drawing != drawing {
             // Reset tracking BEFORE setting drawing — the setter may fire
             // `canvasViewDrawingDidChange` synchronously, and we need
