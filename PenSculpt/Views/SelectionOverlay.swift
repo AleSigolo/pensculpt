@@ -4,11 +4,13 @@ import UIKit
 struct SelectionOverlay: UIViewRepresentable {
     @Binding var lassoPoints: [CGPoint]
     var onLassoCompleted: ([CGPoint]) -> Void
+    var strokes: [Stroke] = []
+    var activeStrategy: SelectionStrategyKind = .lasso
+    var onSmartActivated: () -> Void = {}
+    var onSmartSelectCompleted: (Set<UUID>) -> Void = { _ in }
     var viewBridge: ViewBridge?
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> SelectionView {
         let view = SelectionView()
@@ -19,8 +21,9 @@ struct SelectionOverlay: UIViewRepresentable {
 
     func updateUIView(_ uiView: SelectionView, context: Context) {
         context.coordinator.parent = self
-        // Keep the target reference up to date
         uiView.targetView = viewBridge?.canvasView
+        uiView.strokes = strokes
+        uiView.activeStrategy = activeStrategy
         if lassoPoints.isEmpty && !uiView.displayPoints.isEmpty {
             uiView.clearLasso()
         }
@@ -54,6 +57,19 @@ class SelectionView: UIView {
     private(set) var smartSelectedIDs: Set<UUID> = []
 
     private var smartDistances: [(group: StrokeGroup, distance: CGFloat)] = []
+
+    // MARK: - Gesture + display-link state
+
+    var activeStrategy: SelectionStrategyKind = .lasso
+
+    private var holdTimer: Timer?
+    private var displayLink: CADisplayLink?
+    private var touchStartDisplay: CGPoint = .zero
+    private var touchStartTarget: CGPoint = .zero
+    private var growthStartTime: CFTimeInterval = 0
+    private var seedReach: CGFloat = 0
+    private var isSmartGrowing = false
+    private let haptics = UIImpactFeedbackGenerator(style: .light)
 
     func clearLasso() {
         displayPoints = []
@@ -156,21 +172,135 @@ class SelectionView: UIView {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let p = touches.first.map({ points(for: $0) }) else { return }
-        beginStroke(displayPoint: p.display, targetPoint: p.target)
+        guard let touch = touches.first else { return }
+        let p = points(for: touch)
+        touchStartDisplay = p.display
+        touchStartTarget = p.target
+
+        if activeStrategy == .smart {
+            startSmartGrow(display: p.display, target: p.target)
+        } else {
+            // Tentative lasso; a stationary hold will switch to smart.
+            beginStroke(displayPoint: p.display, targetPoint: p.target)
+            holdTimer = Timer.scheduledTimer(withTimeInterval: SelectionConfig.holdDelay,
+                                             repeats: false) { [weak self] _ in
+                self?.handleHoldFired()
+            }
+        }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let p = touches.first.map({ points(for: $0) }) else { return }
+        guard let touch = touches.first else { return }
+        let p = points(for: touch)
+
+        if isSmartGrowing { return } // smart ignores drift; ring stays put
+
+        let dx = p.display.x - touchStartDisplay.x
+        let dy = p.display.y - touchStartDisplay.y
+        let movement = (dx * dx + dy * dy).squareRoot()
+        if !Self.isWithinSlop(movement: movement, slop: SelectionConfig.moveSlop) {
+            holdTimer?.invalidate(); holdTimer = nil   // committed to lasso
+        }
         continueStroke(displayPoint: p.display, targetPoint: p.target)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        endStroke()
+        holdTimer?.invalidate(); holdTimer = nil
+        if isSmartGrowing {
+            finishSmartGrow()
+        } else {
+            endStroke()
+        }
     }
 
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        holdTimer?.invalidate(); holdTimer = nil
+        if isSmartGrowing {
+            stopDisplayLink()
+            _ = endSmartGrow()
+            isSmartGrowing = false
+        } else {
+            clearLasso()
+        }
+    }
+
+    // MARK: - Smart-grow lifecycle helpers
+
+    private func handleHoldFired() {
+        guard !isSmartGrowing else { return }
+        coordinator?.parent.onSmartActivated()           // flips toggle to .smart
+        activeStrategy = .smart
+        startSmartGrow(display: touchStartDisplay, target: touchStartTarget)
+    }
+
+    private func startSmartGrow(display: CGPoint, target: CGPoint) {
+        isSmartGrowing = true
+        haptics.prepare()
+        beginSmartGrow(displayPoint: display, targetPoint: target)
+        seedReach = smartReach
+        growthStartTime = CACurrentMediaTime()
+        if !smartSelectedIDs.isEmpty { haptics.impactOccurred() }  // seed tick
+        startDisplayLink()
+    }
+
+    private func startDisplayLink() {
+        stopDisplayLink()
+        let link = CADisplayLink(target: self, selector: #selector(stepGrowth))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    @objc private func stepGrowth() {
+        let elapsed = CGFloat(CACurrentMediaTime() - growthStartTime)
+        let reach = seedReach + SelectionConfig.growthRate * elapsed
+        if advanceSmartGrow(reach: reach) {
+            haptics.impactOccurred()                      // tick per new object
+        }
+    }
+
+    private func finishSmartGrow() {
+        stopDisplayLink()
+        let committed = endSmartGrow()
+        isSmartGrowing = false
+        coordinator?.parent.onSmartSelectCompleted(committed)
+    }
+
+    // MARK: - Drawing
+
     override func draw(_ rect: CGRect) {
-        guard displayPoints.count > 1, let ctx = UIGraphicsGetCurrentContext() else { return }
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+
+        // Smart-grow visuals
+        if let center = smartHoldDisplayPoint {
+            // In-progress object highlights (blue), converted canvas → display.
+            ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.5).cgColor)
+            ctx.setLineWidth(6)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            for stroke in strokes where smartSelectedIDs.contains(stroke.id) && stroke.points.count > 1 {
+                ctx.beginPath()
+                ctx.move(to: convertFromTarget(stroke.points[0].location))
+                for point in stroke.points.dropFirst() {
+                    ctx.addLine(to: convertFromTarget(point.location))
+                }
+                ctx.strokePath()
+            }
+            // Reach ring (reach is a canvas-space radius; canvas↔display are
+            // same-scale sibling views, so it maps 1:1).
+            ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.6).cgColor)
+            ctx.setLineWidth(2)
+            ctx.setLineDash(phase: 0, lengths: [])
+            let r = max(smartReach, 1)
+            ctx.strokeEllipse(in: CGRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r))
+        }
+
+        // Lasso path (unchanged)
+        guard displayPoints.count > 1 else { return }
         ctx.setStrokeColor(UIColor.systemBlue.withAlphaComponent(0.7).cgColor)
         ctx.setLineWidth(2)
         ctx.setLineDash(phase: 0, lengths: [8, 4])
@@ -180,5 +310,11 @@ class SelectionView: UIView {
             ctx.addLine(to: point)
         }
         ctx.strokePath()
+    }
+
+    /// Converts a point from target (canvas) coordinates into this view's coordinates.
+    private func convertFromTarget(_ point: CGPoint) -> CGPoint {
+        guard let target = targetView else { return point }
+        return target.convert(point, to: self)
     }
 }
