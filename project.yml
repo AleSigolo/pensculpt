@@ -8,6 +8,7 @@ settings:
   TARGETED_DEVICE_FAMILY: 2
   SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: false
   SWIFT_VERSION: "5.9"
+  DEVELOPMENT_TEAM: 5ZHFW45335
 targets:
   PenSculpt:
     type: application
