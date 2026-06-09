@@ -182,4 +182,68 @@ final class SelectionViewTests: XCTestCase {
 
         XCTAssertFalse(callbackCalled)
     }
+
+    // MARK: - Smart-grow state machine
+
+    private func smartStroke(_ a: CGPoint, _ b: CGPoint) -> Stroke {
+        Stroke(points: [
+            StrokePoint(location: a, pressure: 1, tilt: 0, azimuth: 0, timestamp: 0),
+            StrokePoint(location: b, pressure: 1, tilt: 0, azimuth: 0, timestamp: 0.1)
+        ])
+    }
+
+    func testIsWithinSlop() {
+        XCTAssertTrue(SelectionView.isWithinSlop(movement: 5, slop: 10))
+        XCTAssertFalse(SelectionView.isWithinSlop(movement: 15, slop: 10))
+    }
+
+    func testBeginSmartGrowSeedsNearestObject() {
+        let view = makeSelectionView()
+        let near = smartStroke(CGPoint(x: 10, y: 0), CGPoint(x: 50, y: 0))
+        let far = smartStroke(CGPoint(x: 300, y: 0), CGPoint(x: 350, y: 0))
+        view.strokes = [near, far]
+
+        view.beginSmartGrow(displayPoint: CGPoint(x: 5, y: 5), targetPoint: .zero)
+
+        // Seed reach = nearest distance (~10) → only the near object is selected.
+        XCTAssertTrue(view.smartSelectedIDs.contains(near.id))
+        XCTAssertFalse(view.smartSelectedIDs.contains(far.id))
+    }
+
+    func testAdvanceSmartGrowPullsInFartherObjectAndReportsGrowth() {
+        let view = makeSelectionView()
+        let near = smartStroke(CGPoint(x: 10, y: 0), CGPoint(x: 50, y: 0))
+        let far = smartStroke(CGPoint(x: 300, y: 0), CGPoint(x: 350, y: 0))
+        view.strokes = [near, far]
+        view.beginSmartGrow(displayPoint: .zero, targetPoint: .zero)
+
+        let grewSmall = view.advanceSmartGrow(reach: 50)   // still only near
+        XCTAssertFalse(grewSmall)
+        XCTAssertFalse(view.smartSelectedIDs.contains(far.id))
+
+        let grewLarge = view.advanceSmartGrow(reach: 320)  // far joins (~300)
+        XCTAssertTrue(grewLarge)
+        XCTAssertTrue(view.smartSelectedIDs.contains(far.id))
+    }
+
+    func testEndSmartGrowReturnsCommittedIDsAndClearsReach() {
+        let view = makeSelectionView()
+        let near = smartStroke(CGPoint(x: 10, y: 0), CGPoint(x: 50, y: 0))
+        view.strokes = [near]
+        view.beginSmartGrow(displayPoint: .zero, targetPoint: .zero)
+
+        let committed = view.endSmartGrow()
+        XCTAssertEqual(committed, [near.id])
+        XCTAssertTrue(view.smartSelectedIDs.isEmpty)
+        XCTAssertNil(view.smartHoldDisplayPoint)
+    }
+
+    func testSmartGrowWithNoStrokesSelectsNothing() {
+        let view = makeSelectionView()
+        view.strokes = []
+        view.beginSmartGrow(displayPoint: .zero, targetPoint: .zero)
+        _ = view.advanceSmartGrow(reach: 9999)
+        XCTAssertTrue(view.smartSelectedIDs.isEmpty)
+        XCTAssertTrue(view.endSmartGrow().isEmpty)
+    }
 }

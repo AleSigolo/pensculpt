@@ -42,6 +42,19 @@ class SelectionView: UIView {
     weak var targetView: UIView?
     private(set) var isClosed = false
 
+    // MARK: - Smart-grow state
+
+    /// Snapshot of canvas strokes (canvas coordinates) for clustering + drawing.
+    var strokes: [Stroke] = []
+    /// Reach-ring center in this view's (display) coordinates; nil when inactive.
+    private(set) var smartHoldDisplayPoint: CGPoint?
+    /// Current reach radius (canvas-space distance) for drawing the ring.
+    private(set) var smartReach: CGFloat = 0
+    /// Stroke IDs currently inside the reach.
+    private(set) var smartSelectedIDs: Set<UUID> = []
+
+    private var smartDistances: [(group: StrokeGroup, distance: CGFloat)] = []
+
     func clearLasso() {
         displayPoints = []
         hitTestPoints = []
@@ -79,6 +92,49 @@ class SelectionView: UIView {
             coordinator?.parent.lassoPoints = displayPoints
         }
         setNeedsDisplay()
+    }
+
+    // MARK: - Smart-grow methods
+
+    /// Whether a touch that has moved `movement` points still counts as a hold.
+    static func isWithinSlop(movement: CGFloat, slop: CGFloat) -> Bool {
+        movement <= slop
+    }
+
+    /// Begin smart-grow: cluster the snapshot, seed at the nearest object.
+    /// `targetPoint` is in canvas coordinates; `displayPoint` in view coordinates.
+    func beginSmartGrow(displayPoint: CGPoint, targetPoint: CGPoint) {
+        clearLasso()
+        smartHoldDisplayPoint = displayPoint
+        let groups = StrokeClustering.groups(from: strokes,
+                                             linkDistance: SelectionConfig.clusterLinkDistance)
+        smartDistances = SmartSelection.groupDistances(groups: groups, strokes: strokes,
+                                                       from: targetPoint)
+        smartReach = SmartSelection.nearestDistance(smartDistances)
+        smartSelectedIDs = SmartSelection.groupsWithin(reach: smartReach, distances: smartDistances)
+        setNeedsDisplay()
+    }
+
+    /// Grow the reach. Returns true when new strokes were pulled in (for haptics).
+    @discardableResult
+    func advanceSmartGrow(reach: CGFloat) -> Bool {
+        smartReach = reach
+        let updated = SmartSelection.groupsWithin(reach: reach, distances: smartDistances)
+        let grew = !updated.subtracting(smartSelectedIDs).isEmpty
+        smartSelectedIDs = updated
+        setNeedsDisplay()
+        return grew
+    }
+
+    /// Finish smart-grow, returning the committed stroke IDs and clearing state.
+    func endSmartGrow() -> Set<UUID> {
+        let committed = smartSelectedIDs
+        smartHoldDisplayPoint = nil
+        smartReach = 0
+        smartDistances = []
+        smartSelectedIDs = []
+        setNeedsDisplay()
+        return committed
     }
 
     // MARK: - UITouch handling
