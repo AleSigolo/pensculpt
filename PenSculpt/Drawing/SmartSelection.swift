@@ -17,6 +17,7 @@ enum SmartSelection {
             var best = CGFloat.greatestFiniteMagnitude
             for id in group.strokeIDs {
                 guard let stroke = byID[id] else { continue }
+                guard !stroke.points.isEmpty else { continue }
                 for p in stroke.points {
                     let dx = p.location.x - holdPoint.x
                     let dy = p.location.y - holdPoint.y
@@ -28,7 +29,7 @@ enum SmartSelection {
         }
     }
 
-    /// Distance to the nearest group — the seed reach. Zero when there are no groups.
+    /// Distance to the nearest group — the seed reach. Returns 0 when `distances` is empty.
     static func nearestDistance(
         _ distances: [(group: StrokeGroup, distance: CGFloat)]
     ) -> CGFloat {

@@ -11,12 +11,15 @@ final class SmartSelectionTests: XCTestCase {
     }
 
     /// near (closest point ~10pt from origin) and far (~100pt from origin).
+    /// Groups are built directly to keep these tests isolated from StrokeClustering.
     private func fixture() -> (strokes: [Stroke], groups: [StrokeGroup], near: Stroke, far: Stroke) {
         let near = stroke(CGPoint(x: 10, y: 0), CGPoint(x: 50, y: 0))
         let far = stroke(CGPoint(x: 100, y: 0), CGPoint(x: 150, y: 0))
-        let strokes = [near, far]
-        let groups = StrokeClustering.groups(from: strokes, linkDistance: 24)
-        return (strokes, groups, near, far)
+        let groups = [
+            StrokeGroup(strokeIDs: [near.id], boundingBox: near.boundingBox),
+            StrokeGroup(strokeIDs: [far.id], boundingBox: far.boundingBox)
+        ]
+        return ([near, far], groups, near, far)
     }
 
     func testGroupDistancesUseNearestPoint() {
@@ -66,5 +69,11 @@ final class SmartSelectionTests: XCTestCase {
     func testNoGroupsGivesZeroSeedAndEmptySelection() {
         XCTAssertEqual(SmartSelection.nearestDistance([]), 0, accuracy: 0.0001)
         XCTAssertTrue(SmartSelection.groupsWithin(reach: 999, distances: []).isEmpty)
+    }
+
+    func testGroupWithUnknownStrokeIDGetsMaxDistance() {
+        let phantomGroup = StrokeGroup(strokeIDs: [UUID()], boundingBox: .zero)
+        let distances = SmartSelection.groupDistances(groups: [phantomGroup], strokes: [], from: .zero)
+        XCTAssertEqual(distances[0].distance, .greatestFiniteMagnitude)
     }
 }
