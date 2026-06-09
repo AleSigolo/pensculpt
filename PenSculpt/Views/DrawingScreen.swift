@@ -63,7 +63,7 @@ struct DrawingScreen: View {
     @ViewBuilder
     private var selectModeOverlay: some View {
         if vm.appMode == .select {
-            LassoOverlay(
+            SelectionOverlay(
                 lassoPoints: $vm.lassoPoints,
                 onLassoCompleted: { vm.handleLassoCompleted(polygon: $0) },
                 viewBridge: viewBridge

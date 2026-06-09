@@ -1,10 +1,10 @@
 import XCTest
 @testable import PenSculpt
 
-final class LassoViewTests: XCTestCase {
+final class SelectionViewTests: XCTestCase {
 
-    private func makeLassoView() -> LassoView {
-        let view = LassoView(frame: CGRect(x: 0, y: 0, width: 1024, height: 1366))
+    private func makeSelectionView() -> SelectionView {
+        let view = SelectionView(frame: CGRect(x: 0, y: 0, width: 1024, height: 1366))
         view.backgroundColor = .clear
         return view
     }
@@ -12,7 +12,7 @@ final class LassoViewTests: XCTestCase {
     // MARK: - Basic stroke lifecycle
 
     func testBeginStrokeSetsInitialPoint() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         view.beginStroke(displayPoint: CGPoint(x: 100, y: 200), targetPoint: CGPoint(x: 100, y: 286))
 
         XCTAssertEqual(view.displayPoints.count, 1)
@@ -22,7 +22,7 @@ final class LassoViewTests: XCTestCase {
     }
 
     func testContinueStrokeAppendsPoints() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         view.beginStroke(displayPoint: CGPoint(x: 0, y: 0), targetPoint: CGPoint(x: 0, y: 0))
         view.continueStroke(displayPoint: CGPoint(x: 50, y: 50), targetPoint: CGPoint(x: 50, y: 136))
         view.continueStroke(displayPoint: CGPoint(x: 100, y: 0), targetPoint: CGPoint(x: 100, y: 86))
@@ -32,7 +32,7 @@ final class LassoViewTests: XCTestCase {
     }
 
     func testEndStrokeClosesPathWhenMoreThan2Points() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         view.beginStroke(displayPoint: CGPoint(x: 0, y: 0), targetPoint: CGPoint(x: 0, y: 0))
         view.continueStroke(displayPoint: CGPoint(x: 100, y: 0), targetPoint: CGPoint(x: 100, y: 0))
         view.continueStroke(displayPoint: CGPoint(x: 50, y: 100), targetPoint: CGPoint(x: 50, y: 100))
@@ -48,7 +48,7 @@ final class LassoViewTests: XCTestCase {
     }
 
     func testEndStrokeDiscardsWhenTooFewPoints() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         view.beginStroke(displayPoint: CGPoint(x: 0, y: 0), targetPoint: CGPoint(x: 0, y: 0))
         view.continueStroke(displayPoint: CGPoint(x: 100, y: 0), targetPoint: CGPoint(x: 100, y: 0))
         view.endStroke()
@@ -60,7 +60,7 @@ final class LassoViewTests: XCTestCase {
     }
 
     func testEndStrokeDiscardsSinglePoint() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         view.beginStroke(displayPoint: CGPoint(x: 50, y: 50), targetPoint: CGPoint(x: 50, y: 50))
         view.endStroke()
 
@@ -71,7 +71,7 @@ final class LassoViewTests: XCTestCase {
     // MARK: - Clearing and restarting
 
     func testClearLasso() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         view.beginStroke(displayPoint: .zero, targetPoint: .zero)
         view.continueStroke(displayPoint: CGPoint(x: 100, y: 100), targetPoint: CGPoint(x: 100, y: 100))
         view.continueStroke(displayPoint: CGPoint(x: 0, y: 100), targetPoint: CGPoint(x: 0, y: 100))
@@ -86,7 +86,7 @@ final class LassoViewTests: XCTestCase {
     }
 
     func testNewStrokeAfterClosedClearsPrevious() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         // Draw and close a lasso
         view.beginStroke(displayPoint: CGPoint(x: 0, y: 0), targetPoint: CGPoint(x: 0, y: 0))
         view.continueStroke(displayPoint: CGPoint(x: 100, y: 0), targetPoint: CGPoint(x: 100, y: 0))
@@ -107,7 +107,7 @@ final class LassoViewTests: XCTestCase {
     // MARK: - Display vs hit-test coordinate separation
 
     func testDisplayAndHitTestPointsAreIndependent() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         // Simulate offset between display and target coordinates
         view.beginStroke(displayPoint: CGPoint(x: 100, y: 100), targetPoint: CGPoint(x: 100, y: 186))
         view.continueStroke(displayPoint: CGPoint(x: 200, y: 100), targetPoint: CGPoint(x: 200, y: 186))
@@ -126,7 +126,7 @@ final class LassoViewTests: XCTestCase {
     }
 
     func testWithoutTargetViewPointsMatch() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         view.targetView = nil
 
         // Without a target view, the touch handlers use self coordinates for both
@@ -144,15 +144,15 @@ final class LassoViewTests: XCTestCase {
     // MARK: - Completion callback
 
     func testCompletionCallbackReceivesHitTestPoints() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         var completedPoints: [CGPoint] = []
 
         // Set up a mock coordinator to capture the callback
-        let overlay = LassoOverlay(
+        let overlay = SelectionOverlay(
             lassoPoints: .constant([]),
             onLassoCompleted: { completedPoints = $0 }
         )
-        let coordinator = LassoOverlay.Coordinator(overlay)
+        let coordinator = SelectionOverlay.Coordinator(overlay)
         view.coordinator = coordinator
 
         view.beginStroke(displayPoint: CGPoint(x: 0, y: 0), targetPoint: CGPoint(x: 0, y: 86))
@@ -167,14 +167,14 @@ final class LassoViewTests: XCTestCase {
     }
 
     func testNoCallbackWhenTooFewPoints() {
-        let view = makeLassoView()
+        let view = makeSelectionView()
         var callbackCalled = false
 
-        let overlay = LassoOverlay(
+        let overlay = SelectionOverlay(
             lassoPoints: .constant([]),
             onLassoCompleted: { _ in callbackCalled = true }
         )
-        let coordinator = LassoOverlay.Coordinator(overlay)
+        let coordinator = SelectionOverlay.Coordinator(overlay)
         view.coordinator = coordinator
 
         view.beginStroke(displayPoint: CGPoint(x: 0, y: 0), targetPoint: CGPoint(x: 0, y: 0))

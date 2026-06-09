@@ -173,7 +173,7 @@ final class LassoSelectionTests: XCTestCase {
         window.resignKey()
     }
 
-    /// Full integration test: PKCanvasView + LassoView with nav bar, testing convert-based hit testing.
+    /// Full integration test: PKCanvasView + SelectionView with nav bar, testing convert-based hit testing.
     func testViewBridgeCoordinateConversion() {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 1024, height: 1366))
         let vc = UIViewController()
@@ -192,7 +192,7 @@ final class LassoSelectionTests: XCTestCase {
         vc.view.addSubview(canvasView)
 
         // Lasso view offset by safe area (simulating SwiftUI's layout)
-        let lassoView = LassoView()
+        let lassoView = SelectionView()
         lassoView.frame = CGRect(x: 0, y: safeAreaTop,
                                   width: vc.view.bounds.width,
                                   height: vc.view.bounds.height - safeAreaTop)
@@ -262,7 +262,7 @@ final class LassoSelectionTests: XCTestCase {
 
         let canvasView = PKCanvasView(frame: vc.view.bounds)
         canvasView.contentInsetAdjustmentBehavior = .never
-        let lassoView = LassoView()
+        let lassoView = SelectionView()
         lassoView.frame = vc.view.bounds
         vc.view.addSubview(canvasView)
         vc.view.addSubview(lassoView)

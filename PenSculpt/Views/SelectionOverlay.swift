@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-struct LassoOverlay: UIViewRepresentable {
+struct SelectionOverlay: UIViewRepresentable {
     @Binding var lassoPoints: [CGPoint]
     var onLassoCompleted: ([CGPoint]) -> Void
     var viewBridge: ViewBridge?
@@ -10,14 +10,14 @@ struct LassoOverlay: UIViewRepresentable {
         Coordinator(self)
     }
 
-    func makeUIView(context: Context) -> LassoView {
-        let view = LassoView()
+    func makeUIView(context: Context) -> SelectionView {
+        let view = SelectionView()
         view.backgroundColor = .clear
         view.coordinator = context.coordinator
         return view
     }
 
-    func updateUIView(_ uiView: LassoView, context: Context) {
+    func updateUIView(_ uiView: SelectionView, context: Context) {
         context.coordinator.parent = self
         // Keep the target reference up to date
         uiView.targetView = viewBridge?.canvasView
@@ -27,13 +27,13 @@ struct LassoOverlay: UIViewRepresentable {
     }
 
     class Coordinator {
-        var parent: LassoOverlay
-        init(_ parent: LassoOverlay) { self.parent = parent }
+        var parent: SelectionOverlay
+        init(_ parent: SelectionOverlay) { self.parent = parent }
     }
 }
 
-class LassoView: UIView {
-    var coordinator: LassoOverlay.Coordinator?
+class SelectionView: UIView {
+    var coordinator: SelectionOverlay.Coordinator?
     /// Points in this view's coordinates — used for rendering the lasso path.
     var displayPoints: [CGPoint] = []
     /// Points in the target view's coordinates — used for hit-testing.
