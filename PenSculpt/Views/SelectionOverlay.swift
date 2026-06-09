@@ -65,6 +65,12 @@ class SelectionView: UIView {
     private var holdTimer: Timer?
     private var displayLink: CADisplayLink?
     private var touchStartDisplay: CGPoint = .zero
+
+    deinit {
+        displayLink?.invalidate()
+        holdTimer?.invalidate()
+    }
+
     private var touchStartTarget: CGPoint = .zero
     private var growthStartTime: CFTimeInterval = 0
     private var seedReach: CGFloat = 0
@@ -229,6 +235,9 @@ class SelectionView: UIView {
     private func handleHoldFired() {
         guard !isSmartGrowing else { return }
         coordinator?.parent.onSmartActivated()           // flips toggle to .smart
+        // Set locally too: onSmartActivated triggers a SwiftUI re-render whose
+        // updateUIView re-writes uiView.activeStrategy; setting it here ensures
+        // the in-progress grow sees .smart immediately, regardless of that timing.
         activeStrategy = .smart
         startSmartGrow(display: touchStartDisplay, target: touchStartTarget)
     }
