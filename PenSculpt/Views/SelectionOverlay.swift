@@ -65,6 +65,7 @@ class SelectionView: UIView {
     // MARK: - Point handling (testable)
 
     func beginStroke(displayPoint: CGPoint, targetPoint: CGPoint) {
+        clearSmartGrow()
         if isClosed { clearLasso() }
         displayPoints = [displayPoint]
         hitTestPoints = [targetPoint]
@@ -97,6 +98,7 @@ class SelectionView: UIView {
     // MARK: - Smart-grow methods
 
     /// Whether a touch that has moved `movement` points still counts as a hold.
+    /// Inclusive: `movement == slop` is treated as a hold.
     static func isWithinSlop(movement: CGFloat, slop: CGFloat) -> Bool {
         movement <= slop
     }
@@ -116,12 +118,14 @@ class SelectionView: UIView {
     }
 
     /// Grow the reach. Returns true when new strokes were pulled in (for haptics).
+    /// Monotonic: the selection only ever accumulates — a smaller `reach` never
+    /// removes already-selected strokes.
     @discardableResult
     func advanceSmartGrow(reach: CGFloat) -> Bool {
         smartReach = reach
         let updated = SmartSelection.groupsWithin(reach: reach, distances: smartDistances)
         let grew = !updated.subtracting(smartSelectedIDs).isEmpty
-        smartSelectedIDs = updated
+        smartSelectedIDs.formUnion(updated)
         setNeedsDisplay()
         return grew
     }
@@ -129,12 +133,18 @@ class SelectionView: UIView {
     /// Finish smart-grow, returning the committed stroke IDs and clearing state.
     func endSmartGrow() -> Set<UUID> {
         let committed = smartSelectedIDs
+        clearSmartGrow()
+        setNeedsDisplay()
+        return committed
+    }
+
+    /// Resets smart-grow state (without committing). Called when a lasso gesture
+    /// starts so the two gestures cannot leave stale state in each other.
+    private func clearSmartGrow() {
         smartHoldDisplayPoint = nil
         smartReach = 0
         smartDistances = []
         smartSelectedIDs = []
-        setNeedsDisplay()
-        return committed
     }
 
     // MARK: - UITouch handling

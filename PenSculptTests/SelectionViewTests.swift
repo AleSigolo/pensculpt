@@ -194,6 +194,7 @@ final class SelectionViewTests: XCTestCase {
 
     func testIsWithinSlop() {
         XCTAssertTrue(SelectionView.isWithinSlop(movement: 5, slop: 10))
+        XCTAssertTrue(SelectionView.isWithinSlop(movement: 10, slop: 10))  // boundary: inclusive
         XCTAssertFalse(SelectionView.isWithinSlop(movement: 15, slop: 10))
     }
 
@@ -245,5 +246,18 @@ final class SelectionViewTests: XCTestCase {
         _ = view.advanceSmartGrow(reach: 9999)
         XCTAssertTrue(view.smartSelectedIDs.isEmpty)
         XCTAssertTrue(view.endSmartGrow().isEmpty)
+    }
+
+    func testBeginStrokeClearsStaleSmartGrowState() {
+        let view = makeSelectionView()
+        let near = smartStroke(CGPoint(x: 10, y: 0), CGPoint(x: 50, y: 0))
+        view.strokes = [near]
+        view.beginSmartGrow(displayPoint: .zero, targetPoint: .zero)
+        XCTAssertFalse(view.smartSelectedIDs.isEmpty)
+
+        // Starting a lasso must wipe stale smart-grow state.
+        view.beginStroke(displayPoint: CGPoint(x: 5, y: 5), targetPoint: CGPoint(x: 5, y: 5))
+        XCTAssertTrue(view.smartSelectedIDs.isEmpty)
+        XCTAssertNil(view.smartHoldDisplayPoint)
     }
 }
