@@ -25,6 +25,7 @@ struct DrawingScreen: View {
             canvasLayer
             selectionHighlightLayer
             selectModeOverlay
+            if vm.appMode == .select { selectStrategyControls }
             if vm.appMode == .draw { drawModeControls }
             if vm.appMode == .select && vm.hasSelection { sculptButton }
         }
@@ -66,10 +67,20 @@ struct DrawingScreen: View {
             SelectionOverlay(
                 lassoPoints: $vm.lassoPoints,
                 onLassoCompleted: { vm.handleLassoCompleted(polygon: $0) },
+                strokes: vm.canvas.strokes,
+                activeStrategy: vm.activeStrategy,
+                onSmartActivated: { vm.activateSmartStrategy() },
+                onSmartSelectCompleted: { vm.handleSmartSelectCommitted(strokeIDs: $0) },
                 viewBridge: viewBridge
             )
             .ignoresSafeArea()
         }
+    }
+
+    @ViewBuilder
+    private var selectStrategyControls: some View {
+        SelectionStrategyToggle(strategy: $vm.activeStrategy)
+            .padding(.bottom, vm.hasSelection ? 96 : 30)
     }
 
     private var sculptButton: some View {

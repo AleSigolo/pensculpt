@@ -22,6 +22,7 @@
 		34C45F8BA01561E56E72392B /* MetalCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEB8C5E99B887166FC1FE5C /* MetalCanvasView.swift */; };
 		3ACA72B0A900E98DAF41AFE4 /* DrawingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 864F74CCF32E8B0483123CC0 /* DrawingScreen.swift */; };
 		477ADC079D56B3B0B214B198 /* AppMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F1623E98B6462D9F16D94B5 /* AppMode.swift */; };
+		4A21B3FBF9BF7A51336A1F00 /* SelectionStrategyToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E17523F9D9B673DAA4C4EF /* SelectionStrategyToggle.swift */; };
 		4E8542AAB4F6049A6F22B174 /* StrokePoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892DC21C224D81E91EC19AF6 /* StrokePoint.swift */; };
 		5015977B84755D267A17FE0A /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = D784B2CBE2E2D6AC9508A333 /* Shaders.metal */; };
 		52627E6251CD7270934E142C /* LassoSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290CED964442B54D9C25EB4C /* LassoSelectionTests.swift */; };
@@ -74,6 +75,7 @@
 
 /* Begin PBXFileReference section */
 		00C8D1622658F5E05DB8EA67 /* StrokeClustering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrokeClustering.swift; sourceTree = "<group>"; };
+		07E17523F9D9B673DAA4C4EF /* SelectionStrategyToggle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionStrategyToggle.swift; sourceTree = "<group>"; };
 		09CEEBEBD7ECCAD00A9693D0 /* PenSculptTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PenSculptTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		20F53120679F63904EB7A842 /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
 		2784E41280E22EE54A1D6507 /* CanvasViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasViewTests.swift; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 				A9A3A784F078DB1D1BC21234 /* SculptScreen.swift */,
 				A7F303B02A43E5A69689623C /* SelectionHighlight.swift */,
 				8396FF66E8E8DDE033C82BD3 /* SelectionOverlay.swift */,
+				07E17523F9D9B673DAA4C4EF /* SelectionStrategyToggle.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -399,6 +402,7 @@
 				A7CB08EBF505CA481153743E /* SelectionHighlight.swift in Sources */,
 				D50FD8A27DC8697797C9323F /* SelectionOverlay.swift in Sources */,
 				74B6A6D53B8BAFBA8D733D15 /* SelectionStrategyKind.swift in Sources */,
+				4A21B3FBF9BF7A51336A1F00 /* SelectionStrategyToggle.swift in Sources */,
 				5015977B84755D267A17FE0A /* Shaders.metal in Sources */,
 				5BC7DE43FB96E61022768DA9 /* ShapeInflater.swift in Sources */,
 				F67DC9A686778F1B447E7481 /* SmartSelection.swift in Sources */,
