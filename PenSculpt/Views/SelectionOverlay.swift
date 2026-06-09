@@ -246,6 +246,9 @@ class SelectionView: UIView {
         isSmartGrowing = true
         haptics.prepare()
         beginSmartGrow(displayPoint: display, targetPoint: target)
+        // beginSmartGrow clears the local lasso path; sync the SwiftUI binding too
+        // so a tentative single-point lasso (from a long-press hold) doesn't linger.
+        coordinator?.parent.lassoPoints = []
         seedReach = smartReach
         growthStartTime = CACurrentMediaTime()
         if !smartSelectedIDs.isEmpty { haptics.impactOccurred() }  // seed tick
