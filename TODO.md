@@ -29,10 +29,14 @@ Status legend:
 ## Stage 2: Sculpt Mode
 
 ### Selection System
-- [ ] SelectionStrategy protocol — O[ ] S[ ]
-- [ ] StrokeGroup model — O[ ] S[ ]
+- [x] SelectionStrategy (lasso/smart kinds + unified SelectionOverlay) — O[ ] S[ ]
+- [x] StrokeGroup model — O[ ] S[ ]
 - [x] LassoSelection (point-in-polygon, 50% threshold) — O[ ] S[ ]
 - [x] Selection UI (mode toggle, lasso overlay, highlights) — O[ ] S[x]
+- [x] StrokeClustering (union-find, ink proximity) — O[ ] S[ ]  <!-- O[ ]: O(n²) pair scan; spatial grid TODO -->
+- [x] SmartSelection (reach-based, seed-at-nearest, monotonic) — O[ ] S[ ]
+- [x] Smart selector gesture (hold-to-grow, ring + haptics) — O[ ] S[ ]
+- [x] Selection strategy toggle (Lasso/Smart, long-press auto-switch) — O[ ] S[ ]
 
 ### Inference Pipeline
 - [x] ContourExtractor (Vision ML contour detection with fallback) — O[ ] S[ ]
