@@ -51,6 +51,8 @@
 		E02DD6005263EAD261542098 /* PenSculptApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9997687C31904A1949E3F1A2 /* PenSculptApp.swift */; };
 		E13456789ABCDEF012345679 /* ViewBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13456789ABCDEF012345678 /* ViewBridge.swift */; };
 		F59BCF319DA5B1EF902EAA9A /* StrokePointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A309C2382E507DE74C02938 /* StrokePointTests.swift */; };
+		AA33BB44CC55DD66EE77FF01 /* StrokeGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA33BB44CC55DD66EE77FF00 /* StrokeGroup.swift */; };
+		AA33BB44CC55DD66EE77FF03 /* StrokeGroupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA33BB44CC55DD66EE77FF02 /* StrokeGroupTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -111,6 +113,8 @@
 		E13456789ABCDEF012345678 /* ViewBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewBridge.swift; sourceTree = "<group>"; };
 		FA01AF044A0AAABECBF26AB1 /* FloatingToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingToolbar.swift; sourceTree = "<group>"; };
 		BC01AF044A0AAABECBF26AB1 /* BrushControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrushControls.swift; sourceTree = "<group>"; };
+		AA33BB44CC55DD66EE77FF00 /* StrokeGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrokeGroup.swift; sourceTree = "<group>"; };
+		AA33BB44CC55DD66EE77FF02 /* StrokeGroupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrokeGroupTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -210,6 +214,7 @@
 				4760718293A4B5C6D7E8F001 /* SculptConfig.swift */,
 				3F60718293A4B5C6D7E8F003 /* SculptObject.swift */,
 				C103499A3841733723268595 /* Stroke.swift */,
+				AA33BB44CC55DD66EE77FF00 /* StrokeGroup.swift */,
 				892DC21C224D81E91EC19AF6 /* StrokePoint.swift */,
 			);
 			path = Models;
@@ -235,6 +240,7 @@
 				813766FA9ABE79F98BC8DB4B /* StrokeConverterTests.swift */,
 				8A309C2382E507DE74C02938 /* StrokePointTests.swift */,
 				7261F4A02956799D70E38268 /* StrokeTests.swift */,
+				AA33BB44CC55DD66EE77FF02 /* StrokeGroupTests.swift */,
 			);
 			path = PenSculptTests;
 			sourceTree = "<group>";
@@ -336,6 +342,7 @@
 				A1B13952B16B6F047B7386A0 /* StrokeConverterTests.swift in Sources */,
 				F59BCF319DA5B1EF902EAA9A /* StrokePointTests.swift in Sources */,
 				2DDF9546A258ECC39CF31061 /* StrokeTests.swift in Sources */,
+				AA33BB44CC55DD66EE77FF03 /* StrokeGroupTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -367,6 +374,7 @@
 				5A70819293A4B5C6D7E8F002 /* MeshBVH.swift in Sources */,
 				3F60718293A4B5C6D7E8F004 /* SculptObject.swift in Sources */,
 				1F06F508B357184A0D298B76 /* Stroke.swift in Sources */,
+				AA33BB44CC55DD66EE77FF01 /* StrokeGroup.swift in Sources */,
 				620DF5FFBEBB74AE891E2932 /* StrokeConverter.swift in Sources */,
 				4E8542AAB4F6049A6F22B174 /* StrokePoint.swift in Sources */,
 				E13456789ABCDEF012345679 /* ViewBridge.swift in Sources */,
