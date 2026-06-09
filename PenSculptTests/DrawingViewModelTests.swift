@@ -151,6 +151,39 @@ final class DrawingViewModelTests: XCTestCase {
         XCTAssertTrue(vm.hasSelection)
     }
 
+    // MARK: - Selection strategy
+
+    func testDefaultStrategyIsLasso() {
+        let vm = makeVM()
+        XCTAssertEqual(vm.activeStrategy, .lasso)
+    }
+
+    func testActivateSmartStrategy() {
+        let vm = makeVM()
+        vm.activateSmartStrategy()
+        XCTAssertEqual(vm.activeStrategy, .smart)
+    }
+
+    func testHandleSmartSelectCommittedSetsSelection() {
+        let vm = makeVM()
+        let s1 = makeStroke(at: CGPoint(x: 10, y: 10))
+        let s2 = makeStroke(at: CGPoint(x: 500, y: 500))
+        vm.addStroke(s1)
+        vm.addStroke(s2)
+
+        vm.handleSmartSelectCommitted(strokeIDs: [s1.id])
+
+        XCTAssertEqual(vm.selectedStrokeIDs, [s1.id])
+    }
+
+    func testToggleToDrawResetsStrategyToLasso() {
+        let vm = makeVM()
+        vm.toggleMode()                // → select
+        vm.activateSmartStrategy()     // → smart
+        vm.toggleMode()                // → draw
+        XCTAssertEqual(vm.activeStrategy, .lasso)
+    }
+
     // MARK: - Stroke mutations
 
     func testAddStroke() {

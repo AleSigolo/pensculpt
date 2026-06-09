@@ -12,6 +12,7 @@ class DrawingViewModel {
     var appMode: AppMode = .draw
     var lassoPoints: [CGPoint] = []
     var selectedStrokeIDs: Set<UUID> = []
+    var activeStrategy: SelectionStrategyKind = .lasso
     var showSculptScreen = false
 
     /// Tracks the last eraser type for pencil double-tap toggle.
@@ -47,6 +48,7 @@ class DrawingViewModel {
             appMode = .draw
             lassoPoints = []
             selectedStrokeIDs = []
+            activeStrategy = .lasso
         }
     }
 
@@ -68,6 +70,14 @@ class DrawingViewModel {
             strokes: canvas.strokes,
             polygon: polygon
         )
+    }
+
+    func activateSmartStrategy() {
+        activeStrategy = .smart
+    }
+
+    func handleSmartSelectCommitted(strokeIDs: Set<UUID>) {
+        selectedStrokeIDs = strokeIDs
     }
 
     // MARK: - Stroke mutations
