@@ -60,10 +60,15 @@ Status legend:
 
 ### Integration
 - [x] SculptScreen view — O[ ] S[ ]
-- [x] Mode switching (Draw → Select → Sculpt) — O[ ] S[x]
+- [x] Mode switching (Draw → Select → 2.5D Edit) — O[ ] S[x]
+- [x] 2.5D edit mode: in-place lift (CameraTransform, transparent overlay) — O[ ] S[ ]
+- [x] 2.5D edit mode: ink lift/bake (StrokeLifter) — O[ ] S[ ]
+- [x] 2.5D edit mode: input routing (EditInputRouter, pen=draw / finger=rotate) — O[ ] S[ ]
+- [x] 2.5D edit mode: expand to full sculpt workspace — O[ ] S[ ]
+- [x] 2.5D edit mode guide — O[ ] S[ ]
 - [x] Multi-object interaction (active/dimmed) — O[ ] S[ ]
 - [x] Document persistence for SculptObjects — O[ ] S[ ]
-- [ ] Sculpt mode guide — O[ ] S[ ]
+- [x] Sculpt mode guide (superseded by 2.5D edit mode guide) — O[ ] S[ ]
 
 ## Future Stages
 - [x] Project surface strokes back to 2D canvas — O[ ] S[ ]
