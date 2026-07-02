@@ -6,7 +6,11 @@
 
 ## Summary
 
-A unified **2.5D edit mode** that replaces the modal `SculptScreen` hand-off.
+A unified **2.5D edit mode** that replaces the modal `SculptScreen` hand-off
+as the primary sculpt flow. The dedicated full-screen sculpt workspace is
+**kept** and reachable from inside an edit session via an expand button (for
+camera zoom, multi-object work, and manual re-inference); dismissing it
+returns to the in-place session.
 The user selects a shape (lasso or smart selector) and the selection **lifts
 off the page in place**: the inferred mesh appears exactly where the ink was,
 with the original ink mapped onto its surface, while the rest of the drawing
@@ -46,7 +50,9 @@ primary loop of rotate-a-bit, draw-a-bit.
 
 ## Non-goals (YAGNI)
 
-- Multiple objects lifted simultaneously — one active object per edit session.
+- Multiple objects lifted simultaneously — one active object per in-place
+  session (the expanded full-sculpt workspace still offers multi-object
+  cycling).
 - PKCanvasView zoom/scroll support while in edit mode (canvas is 1:1 today;
   the camera registration assumes that and asserts it).
 - Perspective camera (tracked separately in TODO).
@@ -61,7 +67,8 @@ primary loop of rotate-a-bit, draw-a-bit.
 | Question | Decision |
 |----------|----------|
 | Architecture | **In-place overlay**: transparent `MTKView` layered above the live (frozen) `PKCanvasView` inside `DrawingScreen`'s ZStack. PencilKit stays the 2D engine. |
-| Mode model | `AppMode` gains `.edit`. Flow: `.draw` ↔ `.select` → (commit selection) → `.edit` → (bake) → `.draw`. The `fullScreenCover`/`SculptScreen` is removed. |
+| Mode model | `AppMode` gains `.edit`. Flow: `.draw` ↔ `.select` → (commit selection) → `.edit` → (bake) → `.draw`. The selection→sculpt `fullScreenCover` hand-off is removed. |
+| Full sculpt workspace | **Kept.** An expand button in the edit HUD presents the classic `SculptScreen` (object-fit camera with zoom, multi-object cycling, manual re-infer/morph) for the same object via the shared `sculptObjects` binding; dismissing returns to the in-place session with mesh/ink edits intact. Its auto-project-on-dismiss mechanism is removed — bake at commit is the only 3D→2D projection path. Camera rotation there is transient (inspection), not persisted object orientation. |
 | Entry trigger | Committing a selection (lasso close / smart-grow release) lifts the shape directly — no separate "Sculpt" button press. Inference runs async; ink lifts with a ghost placeholder until the mesh arrives. |
 | Registration | New `CameraTransform` utility: orthographic projection mapping world ↔ canvas points 1:1 across the whole view; model transform = `T(center) · R(orientation) · S(scale) · T(−center)` pivoting at the object's world center. Replaces the object-fit `combinedBounds` camera. |
 | Source ink on entry | Source strokes are ray-cast along (0,0,−1) onto the mesh into `SurfaceStroke`s (reusing the `reprojected` machinery) and hidden from the PK canvas for the session. |
@@ -95,8 +102,14 @@ primary loop of rotate-a-bit, draw-a-bit.
 - **`Edit25DOverlay`** (new, `Views/`) — SwiftUI view embedded in
   `DrawingScreen`'s ZStack when mode is `.edit`. Hosts the transparent
   `MetalCanvasView` plus the compact tool HUD (thumb-rotate, deform, smooth,
-  brush size, re-infer, done). Absorbs `SculptScreen`'s responsibilities;
-  `SculptScreen` and the `fullScreenCover` are deleted.
+  brush size, expand-to-full-sculpt, done). Owns the in-place session
+  lifecycle (inference, lift, commit).
+- **`SculptScreen`** (kept, `Views/`) — the full-screen sculpt workspace,
+  now presented from an edit session's expand button instead of from the
+  selection flow. Loses its auto-project toggle (bake supersedes it);
+  keeps camera zoom, multi-object cycling, and the re-infer/morph buttons.
+  It shares the `sculptObjects` binding, so mesh and ink edits made there
+  flow back into the in-place session on dismiss.
 - **`CameraTransform`** (new, `Rendering/`) — pure struct owning
   projection/view/model matrices, world↔canvas↔screen conversions, and
   unprojection. Replaces the three duplicated unproject blocks in
@@ -131,6 +144,10 @@ primary loop of rotate-a-bit, draw-a-bit.
 (`handleDraw`, `applyRotation`, `handleDeform`) or the new off-mesh 2D stroke
 capture (coalesced raw touches → `Stroke` → append to canvas + `pkDrawing`).
 Off-mesh strokes are ordinary canvas ink and do not join the object.
+The expand button presents `SculptScreen` full-screen for the same object;
+edits there land in the shared `sculptObjects` binding and appear in place
+on dismiss. The in-place session's orientation/scale are untouched by the
+excursion (full-sculpt rotation is a camera move, not an object transform).
 
 **Exit** (tap-away or Done):
 1. `StrokeLifter.bake` projects all surface strokes through the current model
