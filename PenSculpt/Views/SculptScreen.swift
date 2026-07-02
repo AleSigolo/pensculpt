@@ -17,6 +17,11 @@ struct SculptScreen: View {
     @State private var rendererMorphMesh: ((UUID, Mesh, [SurfaceStroke]?) -> Void)?
     @State private var rendererCacheBVH: ((UUID, MeshBVH) -> Void)?
     @State private var isReInferring = false
+    /// reInferMorph's final mesh write to the binding, deferred until the
+    /// renderer's cross-fade lands. Kept here so onDisappear can flush it if
+    /// the workspace is dismissed inside the delay window.
+    @State private var pendingMorphMeshWrite: (objectID: UUID, mesh: Mesh)?
+    @State private var morphMeshWriteTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -177,6 +182,25 @@ struct SculptScreen: View {
                 inferNewObject()
             }
         }
+        .onDisappear {
+            // Dismissed inside the morph-write delay window: flush the final
+            // mesh now so the host overlay never sees the pre-morph mesh.
+            morphMeshWriteTask?.cancel()
+            if let pending = pendingMorphMeshWrite {
+                applyMorphMeshWrite(objectID: pending.objectID, mesh: pending.mesh)
+            }
+        }
+    }
+
+    /// Writes reInferMorph's final mesh to the binding (idempotent — the
+    /// delayed task and the onDisappear flush may not both run, but a double
+    /// write would store the same mesh).
+    private func applyMorphMeshWrite(objectID: UUID, mesh: Mesh) {
+        pendingMorphMeshWrite = nil
+        morphMeshWriteTask = nil
+        if let idx = sculptObjects.firstIndex(where: { $0.id == objectID }) {
+            sculptObjects[idx].mesh = mesh
+        }
     }
 
     private var activeObjectIndex: Int {
@@ -290,12 +314,16 @@ struct SculptScreen: View {
                     rendererMorphMesh?(id, newObj.mesh, reprojected)
                 }
                 rendererCacheBVH?(id, bvh)
-                // Update binding mesh after morph completes
-                Task {
+                // Update the binding mesh only after the renderer's morph
+                // animation completes. Tracked as a pending write so that
+                // dismissing the workspace inside the window flushes it
+                // (onDisappear) instead of leaving the binding — and any
+                // overlay caches rebuilt from it — holding the pre-morph mesh.
+                pendingMorphMeshWrite = (id, newObj.mesh)
+                morphMeshWriteTask = Task { [mesh = newObj.mesh] in
                     try? await Task.sleep(for: .milliseconds(350))
-                    if let idx = sculptObjects.firstIndex(where: { $0.id == id }) {
-                        sculptObjects[idx].mesh = newObj.mesh
-                    }
+                    guard !Task.isCancelled else { return }
+                    applyMorphMeshWrite(objectID: id, mesh: mesh)
                 }
                 isReInferring = false
             }
