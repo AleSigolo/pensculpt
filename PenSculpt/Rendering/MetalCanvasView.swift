@@ -1,16 +1,26 @@
 import SwiftUI
 import MetalKit
+import simd
 
 /// MTKView subclass that captures Apple Pencil coalesced touches for high-fidelity strokes.
 class ForceMTKView: MTKView {
     var currentForce: CGFloat = 0
     var maximumForce: CGFloat = 0
     /// Buffered coalesced touch samples (up to 240Hz with Apple Pencil).
-    var coalescedSamples: [(location: CGPoint, force: CGFloat, maxForce: CGFloat)] = []
+    var coalescedSamples: [(location: CGPoint, force: CGFloat, maxForce: CGFloat,
+                            timestamp: TimeInterval)] = []
+    /// Whether the current touch sequence is Apple Pencil input.
+    var lastTouchWasPencil = false
+    /// Exact touch-down point of the current sequence. Gesture recognizers
+    /// fire ~10pt after touch-down; classification (on-mesh vs off-mesh)
+    /// must use the true start point, not the recognizer's location.
+    var lastTouchDownLocation: CGPoint?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
         guard let touch = touches.first else { return }
+        lastTouchWasPencil = touch.type == .pencil
+        lastTouchDownLocation = touch.location(in: self)
         bufferCoalesced(touch: touch, event: event)
         updateForce(touch)
     }
@@ -38,12 +48,14 @@ class ForceMTKView: MTKView {
             for ct in coalesced {
                 coalescedSamples.append((location: ct.location(in: self),
                                          force: ct.force,
-                                         maxForce: maxForce))
+                                         maxForce: maxForce,
+                                         timestamp: ct.timestamp))
             }
         } else {
             coalescedSamples.append((location: touch.location(in: self),
                                      force: touch.force,
-                                     maxForce: maxForce))
+                                     maxForce: maxForce,
+                                     timestamp: touch.timestamp))
         }
     }
 
@@ -69,13 +81,35 @@ struct MetalCanvasView: UIViewRepresentable {
     var onMeshDeformed: ((UUID, Mesh, [SurfaceStroke]) -> Void)?
     var onDeformCursor: (((position: CGPoint, radius: CGFloat)?) -> Void)?
     var onRendererReady: ((@escaping (UUID, Mesh, [SurfaceStroke]?) -> Void, @escaping (UUID, Mesh, [SurfaceStroke]?) -> Void, @escaping (UUID, MeshBVH) -> Void) -> Void)?
+    /// Present when hosted by Edit25DOverlay: configures the in-place camera
+    /// and unlocks edit-mode routing (off-mesh drawing, tap-to-commit).
+    struct EditSession: Equatable {
+        var objectID: UUID
+        var pivot: SIMD3<Float>
+        var initialOrientation: simd_quatf
+        var initialScale: Float
+    }
+    var editSession: EditSession?
+    /// A flat 2D stroke was drawn beside the shape (canvas coordinates).
+    var onCanvasStrokeCompleted: ((Stroke) -> Void)?
+    /// Reported at the end of every rotate/pinch gesture so the host can bake.
+    var onEditTransformChanged: ((simd_quatf, Float) -> Void)?
+    /// User tapped empty canvas — commit the session.
+    var onCommitRequested: (() -> Void)?
 
     func makeUIView(context: Context) -> ForceMTKView {
         guard let device = MTLCreateSystemDefaultDevice() else {
             fatalError("Metal is not supported on this device")
         }
         let view = ForceMTKView(frame: .zero, device: device)
-        view.clearColor = MTLClearColor(red: 0.95, green: 0.95, blue: 0.96, alpha: 1)
+        if editSession != nil {
+            view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+            view.isOpaque = false
+            view.layer.isOpaque = false
+            view.backgroundColor = .clear
+        } else {
+            view.clearColor = MTLClearColor(red: 0.95, green: 0.95, blue: 0.96, alpha: 1)
+        }
         view.isPaused = false
         view.enableSetNeedsDisplay = false
         view.preferredFramesPerSecond = 60
@@ -130,6 +164,13 @@ struct MetalCanvasView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: ForceMTKView, context: Context) {
+        if let session = editSession, context.coordinator.appliedEditSessionID != session.objectID,
+           let renderer = context.coordinator.renderer {
+            context.coordinator.appliedEditSessionID = session.objectID
+            renderer.editPivot = session.pivot
+            renderer.rotation = session.initialOrientation
+            renderer.modelScale = session.initialScale
+        }
         if !context.coordinator.isCurrentlyDeforming {
             context.coordinator.renderer?.sculptObjects = sculptObjects
         }
@@ -146,6 +187,10 @@ struct MetalCanvasView: UIViewRepresentable {
         context.coordinator.onSurfaceStrokeCompleted = onSurfaceStrokeCompleted
         context.coordinator.onMeshDeformed = onMeshDeformed
         context.coordinator.onDeformCursor = onDeformCursor
+        context.coordinator.onCanvasStrokeCompleted = onCanvasStrokeCompleted
+        context.coordinator.onEditTransformChanged = onEditTransformChanged
+        context.coordinator.onCommitRequested = onCommitRequested
+        context.coordinator.isEditSession = editSession != nil
     }
 
     func makeCoordinator() -> Coordinator {
@@ -165,29 +210,90 @@ struct MetalCanvasView: UIViewRepresentable {
         var onMeshDeformed: ((UUID, Mesh, [SurfaceStroke]) -> Void)?
         var onDeformCursor: (((position: CGPoint, radius: CGFloat)?) -> Void)?
         var isCurrentlyDeforming = false
+        var appliedEditSessionID: UUID?
+        var isEditSession = false
+        var onCanvasStrokeCompleted: ((Stroke) -> Void)?
+        var onEditTransformChanged: ((simd_quatf, Float) -> Void)?
+        var onCommitRequested: (() -> Void)?
+        /// Resolved once per drag from the gesture's first sample.
+        private var activeDragAction: EditInputRouter.Action?
+        /// Raw samples of an in-progress flat canvas stroke.
+        private var canvasStrokeSamples: [(location: CGPoint, force: CGFloat,
+                                           maxForce: CGFloat, timestamp: TimeInterval)] = []
 
         @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
             applyRotation(gesture)
+            if gesture.state == .ended || gesture.state == .cancelled, let renderer = renderer {
+                onEditTransformChanged?(renderer.rotation, renderer.modelScale)
+            }
         }
 
         @objc func handleSinglePan(_ gesture: UIPanGestureRecognizer) {
             // Flush stale coalesced samples from prior gestures (taps, two-finger)
             // so they don't get misinterpreted as stroke points.
-            if gesture.state == .began,
-               let forceView = gesture.view as? ForceMTKView {
-                forceView.coalescedSamples.removeAll()
+            if gesture.state == .began {
+                (gesture.view as? ForceMTKView)?.coalescedSamples.removeAll()
+                activeDragAction = nil
             }
-            if isRotateMode {
+
+            if !isEditSession {
+                if isRotateMode {
+                    applyRotation(gesture)
+                } else if isDeformMode {
+                    handleDeform(gesture)
+                } else {
+                    handleDraw(gesture)
+                }
+                return
+            }
+
+            guard let forceView = gesture.view as? ForceMTKView, let renderer = renderer else { return }
+
+            if activeDragAction == nil {
+                let pointer: EditInputRouter.Pointer = forceView.lastTouchWasPencil ? .pencil : .finger
+                let tool: EditInputRouter.Tool = isDeformMode
+                    ? (isSmoothMode ? .smooth : .deform)
+                    : (isEraseStrokeMode ? .eraseStroke : .draw)
+                let startPoint = forceView.lastTouchDownLocation
+                    ?? gesture.location(in: forceView)
+                let onMesh = renderer.hitTest(screenPoint: startPoint,
+                                              viewSize: forceView.bounds.size) != nil
+                activeDragAction = EditInputRouter.dragAction(
+                    pointer: pointer, startedOnMesh: onMesh,
+                    thumbRotateHeld: isRotateMode, tool: tool)
+            }
+
+            switch activeDragAction {
+            case .rotate:
                 applyRotation(gesture)
-            } else if isDeformMode {
+                if gesture.state == .ended || gesture.state == .cancelled {
+                    onEditTransformChanged?(renderer.rotation, renderer.modelScale)
+                }
+            case .deform, .smooth:
                 handleDeform(gesture)
-            } else {
+            case .eraseStroke, .drawOnSurface:
                 handleDraw(gesture)
+            case .drawOnCanvas:
+                handleCanvasDraw(gesture, forceView: forceView)
+            default:
+                break
+            }
+
+            if gesture.state == .ended || gesture.state == .cancelled {
+                activeDragAction = nil
             }
         }
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
-            onObjectTapped?()
+            guard isEditSession else { onObjectTapped?(); return }
+            guard let renderer = renderer, let view = gesture.view else { return }
+            let pointer: EditInputRouter.Pointer =
+                (view as? ForceMTKView)?.lastTouchWasPencil == true ? .pencil : .finger
+            let onMesh = renderer.hitTest(screenPoint: gesture.location(in: view),
+                                          viewSize: view.bounds.size) != nil
+            if EditInputRouter.tapAction(onMesh: onMesh, pointer: pointer) == .commit {
+                onCommitRequested?()
+            }
         }
 
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
@@ -195,6 +301,8 @@ struct MetalCanvasView: UIViewRepresentable {
             if gesture.state == .changed {
                 renderer.zoom(by: Float(gesture.scale))
                 gesture.scale = 1
+            } else if gesture.state == .ended || gesture.state == .cancelled {
+                onEditTransformChanged?(renderer.rotation, renderer.modelScale)
             }
         }
 
@@ -203,6 +311,8 @@ struct MetalCanvasView: UIViewRepresentable {
             if gesture.state == .changed {
                 renderer.rotateZ(by: Float(gesture.rotation))
                 gesture.rotation = 0
+            } else if gesture.state == .ended || gesture.state == .cancelled {
+                onEditTransformChanged?(renderer.rotation, renderer.modelScale)
             }
         }
 
@@ -252,7 +362,9 @@ struct MetalCanvasView: UIViewRepresentable {
                                          radius: worldRadius, screenVelocity: velocity)
                 }
 
-                let screenRadius = CGFloat(worldRadius) * viewSize.height / CGFloat(2 * renderer.combinedRadius)
+                let screenRadius = renderer.editPivot != nil
+                    ? CGFloat(worldRadius * renderer.modelScale)
+                    : CGFloat(worldRadius) * viewSize.height / CGFloat(2 * renderer.combinedRadius)
                 onDeformCursor?((position: location, radius: screenRadius))
             } else if gesture.state == .ended || gesture.state == .cancelled {
                 isCurrentlyDeforming = false
@@ -320,6 +432,43 @@ struct MetalCanvasView: UIViewRepresentable {
                 renderer.currentStrokePoints.removeAll()
                 renderer.currentStrokeWidths.removeAll()
                 renderer.lastHitT = 0
+            }
+        }
+
+        private func handleCanvasDraw(_ gesture: UIPanGestureRecognizer, forceView: ForceMTKView) {
+            guard let renderer = renderer else { return }
+            if gesture.state == .began { canvasStrokeSamples.removeAll() }
+
+            if gesture.state == .began || gesture.state == .changed {
+                let samples = forceView.coalescedSamples
+                forceView.coalescedSamples.removeAll()
+                canvasStrokeSamples.append(contentsOf: samples)
+                for sample in samples {
+                    renderer.currentCanvasStrokePoints.append(
+                        SIMD3(Float(sample.location.x), Float(-sample.location.y), 0))
+                    renderer.currentCanvasStrokeWidths.append(
+                        pressureWidth(force: sample.force, maxForce: sample.maxForce))
+                }
+            } else if gesture.state == .ended || gesture.state == .cancelled {
+                forceView.coalescedSamples.removeAll()
+                if canvasStrokeSamples.count > 1 {
+                    let t0 = canvasStrokeSamples[0].timestamp
+                    let points = canvasStrokeSamples.map { s in
+                        // pressure is canonically rendered-width / widthPerPressure
+                        // (StrokeConverter convention), so the committed ink width
+                        // matches the live preview drawn at pressureWidth(...).
+                        StrokePoint(location: s.location,
+                                    pressure: CGFloat(pressureWidth(force: s.force,
+                                                                    maxForce: s.maxForce))
+                                        / CGFloat(StrokeLifter.widthPerPressure),
+                                    tilt: .pi / 2, azimuth: 0,
+                                    timestamp: s.timestamp - t0)
+                    }
+                    onCanvasStrokeCompleted?(Stroke(points: points))
+                }
+                canvasStrokeSamples.removeAll()
+                renderer.currentCanvasStrokePoints.removeAll()
+                renderer.currentCanvasStrokeWidths.removeAll()
             }
         }
 

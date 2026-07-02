@@ -13,15 +13,15 @@ final class MetalCanvasViewTests: XCTestCase {
 
     func testCoalescedSamplesAccumulate() {
         let view = ForceMTKView(frame: .zero, device: nil)
-        view.coalescedSamples.append((location: CGPoint(x: 10, y: 20), force: 0.5, maxForce: 1.0))
-        view.coalescedSamples.append((location: CGPoint(x: 30, y: 40), force: 0.8, maxForce: 1.0))
+        view.coalescedSamples.append((location: CGPoint(x: 10, y: 20), force: 0.5, maxForce: 1.0, timestamp: 0))
+        view.coalescedSamples.append((location: CGPoint(x: 30, y: 40), force: 0.8, maxForce: 1.0, timestamp: 0))
         XCTAssertEqual(view.coalescedSamples.count, 2)
     }
 
     func testCoalescedSamplesClearRemovesAll() {
         let view = ForceMTKView(frame: .zero, device: nil)
-        view.coalescedSamples.append((location: .zero, force: 0.5, maxForce: 1.0))
-        view.coalescedSamples.append((location: .zero, force: 0.8, maxForce: 1.0))
+        view.coalescedSamples.append((location: .zero, force: 0.5, maxForce: 1.0, timestamp: 0))
+        view.coalescedSamples.append((location: .zero, force: 0.8, maxForce: 1.0, timestamp: 0))
         view.coalescedSamples.removeAll()
         XCTAssertTrue(view.coalescedSamples.isEmpty)
     }
@@ -33,8 +33,8 @@ final class MetalCanvasViewTests: XCTestCase {
         let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
 
         // Simulate stale samples from prior gestures (taps, two-finger rotate/pinch)
-        view.coalescedSamples.append((location: CGPoint(x: 100, y: 100), force: 0.5, maxForce: 1.0))
-        view.coalescedSamples.append((location: CGPoint(x: 200, y: 200), force: 0.8, maxForce: 1.0))
+        view.coalescedSamples.append((location: CGPoint(x: 100, y: 100), force: 0.5, maxForce: 1.0, timestamp: 0))
+        view.coalescedSamples.append((location: CGPoint(x: 200, y: 200), force: 0.8, maxForce: 1.0, timestamp: 0))
         XCTAssertEqual(view.coalescedSamples.count, 2)
 
         let gesture = MockPanGestureRecognizer(target: nil, action: nil)
@@ -52,7 +52,7 @@ final class MetalCanvasViewTests: XCTestCase {
         let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
 
         // Add a sample representing current drawing input
-        view.coalescedSamples.append((location: CGPoint(x: 50, y: 50), force: 0.6, maxForce: 1.0))
+        view.coalescedSamples.append((location: CGPoint(x: 50, y: 50), force: 0.6, maxForce: 1.0, timestamp: 0))
 
         let gesture = MockPanGestureRecognizer(target: nil, action: nil)
         gesture.mockState = .changed
@@ -69,7 +69,7 @@ final class MetalCanvasViewTests: XCTestCase {
         let coordinator = MetalCanvasView.Coordinator()
         let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
 
-        view.coalescedSamples.append((location: CGPoint(x: 50, y: 50), force: 0.6, maxForce: 1.0))
+        view.coalescedSamples.append((location: CGPoint(x: 50, y: 50), force: 0.6, maxForce: 1.0, timestamp: 0))
 
         let gesture = MockPanGestureRecognizer(target: nil, action: nil)
         gesture.mockState = .ended
@@ -88,7 +88,7 @@ final class MetalCanvasViewTests: XCTestCase {
         coordinator.isDeformMode = true
         let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
 
-        view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.3, maxForce: 1.0))
+        view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.3, maxForce: 1.0, timestamp: 0))
 
         let gesture = MockPanGestureRecognizer(target: nil, action: nil)
         gesture.mockState = .began
@@ -105,7 +105,7 @@ final class MetalCanvasViewTests: XCTestCase {
         coordinator.isRotateMode = true
         let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
 
-        view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.3, maxForce: 1.0))
+        view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.3, maxForce: 1.0, timestamp: 0))
 
         let gesture = MockPanGestureRecognizer(target: nil, action: nil)
         gesture.mockState = .began
