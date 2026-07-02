@@ -6,12 +6,15 @@ struct SurfaceStroke: Identifiable, Codable, Equatable, Sendable {
     var points: [SIMD3<Float>]
     var widths: [Float]
     var opacity: Float
+    var color: CodableColor
 
-    init(id: UUID = UUID(), points: [SIMD3<Float>] = [], widths: [Float] = [], opacity: Float = 1) {
+    init(id: UUID = UUID(), points: [SIMD3<Float>] = [], widths: [Float] = [],
+         opacity: Float = 1, color: CodableColor = .black) {
         self.id = id
         self.points = points
         self.widths = widths
         self.opacity = opacity
+        self.color = color
     }
 
     init(from decoder: Decoder) throws {
@@ -21,6 +24,9 @@ struct SurfaceStroke: Identifiable, Codable, Equatable, Sendable {
         widths = try container.decodeIfPresent([Float].self, forKey: .widths)
             ?? Array(repeating: 3.0, count: points.count)
         opacity = try container.decodeIfPresent(Float.self, forKey: .opacity) ?? 1
+        // Pre-2.5D strokes were rendered hardcoded blue; preserve that look.
+        color = try container.decodeIfPresent(CodableColor.self, forKey: .color)
+            ?? CodableColor(red: 0.2, green: 0.2, blue: 0.8, alpha: 1)
     }
 }
 
@@ -37,7 +43,9 @@ extension SurfaceStroke {
                 timestamp: TimeInterval(i) * 0.01
             )
         }
-        let color = CodableColor(red: 0.2, green: 0.2, blue: 0.8, alpha: CGFloat(opacity))
+        let color = CodableColor(red: self.color.red, green: self.color.green,
+                                 blue: self.color.blue,
+                                 alpha: self.color.alpha * CGFloat(opacity))
         return Stroke(points: strokePoints, color: color)
     }
 
@@ -60,7 +68,8 @@ extension SurfaceStroke {
         }
 
         guard newPoints.count > 1 else { return nil }
-        return SurfaceStroke(id: id, points: newPoints, widths: newWidths)
+        return SurfaceStroke(id: id, points: newPoints, widths: newWidths,
+                             opacity: opacity, color: color)
     }
 
     private static func castOntoMesh(from origin: SIMD3<Float>, direction: SIMD3<Float>,
@@ -103,14 +112,25 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
     /// The 2D bounding rect of the source strokes in canvas coordinates.
     /// Used to map the 3D mesh back to its original position on the drawing canvas.
     var originRect: CGRect
+    /// Persisted model rotation from the last edit session (identity = as drawn).
+    var orientation: simd_quatf
+    /// Persisted uniform model scale from the last edit session.
+    var scale: Float
+
+    private enum CodingKeys: String, CodingKey {
+        case id, mesh, sourceStrokeIDs, surfaceStrokes, originRect, orientation, scale
+    }
 
     init(id: UUID = UUID(), mesh: Mesh, sourceStrokeIDs: Set<UUID>,
-         surfaceStrokes: [SurfaceStroke] = [], originRect: CGRect = .zero) {
+         surfaceStrokes: [SurfaceStroke] = [], originRect: CGRect = .zero,
+         orientation: simd_quatf = simd_quatf(vector: SIMD4(0, 0, 0, 1)), scale: Float = 1) {
         self.id = id
         self.mesh = mesh
         self.sourceStrokeIDs = sourceStrokeIDs
         self.surfaceStrokes = surfaceStrokes
         self.originRect = originRect
+        self.orientation = orientation
+        self.scale = scale
     }
 
     init(from decoder: Decoder) throws {
@@ -120,5 +140,20 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
         sourceStrokeIDs = try container.decode(Set<UUID>.self, forKey: .sourceStrokeIDs)
         surfaceStrokes = try container.decodeIfPresent([SurfaceStroke].self, forKey: .surfaceStrokes) ?? []
         originRect = try container.decodeIfPresent(CGRect.self, forKey: .originRect) ?? .zero
+        let ov = try container.decodeIfPresent(SIMD4<Float>.self, forKey: .orientation)
+            ?? SIMD4(0, 0, 0, 1)
+        orientation = simd_quatf(vector: ov)
+        scale = try container.decodeIfPresent(Float.self, forKey: .scale) ?? 1
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(mesh, forKey: .mesh)
+        try container.encode(sourceStrokeIDs, forKey: .sourceStrokeIDs)
+        try container.encode(surfaceStrokes, forKey: .surfaceStrokes)
+        try container.encode(originRect, forKey: .originRect)
+        try container.encode(orientation.vector, forKey: .orientation)
+        try container.encode(scale, forKey: .scale)
     }
 }
