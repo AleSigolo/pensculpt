@@ -42,6 +42,7 @@ class DrawingViewModel {
     // MARK: - Mode switching
 
     func toggleMode() {
+        guard appMode != .edit else { return }
         if appMode == .draw {
             appMode = .select
         } else {
@@ -70,6 +71,7 @@ class DrawingViewModel {
             strokes: canvas.strokes,
             polygon: polygon
         )
+        if hasSelection { appMode = .edit }
     }
 
     func activateSmartStrategy() {
@@ -78,6 +80,15 @@ class DrawingViewModel {
 
     func handleSmartSelectCommitted(strokeIDs: Set<UUID>) {
         selectedStrokeIDs = strokeIDs
+        if hasSelection { appMode = .edit }
+    }
+
+    /// Leaves 2.5D edit mode and returns to drawing with a clean selection state.
+    func exitEditMode() {
+        appMode = .draw
+        lassoPoints = []
+        selectedStrokeIDs = []
+        activeStrategy = .lasso
     }
 
     // MARK: - Stroke mutations

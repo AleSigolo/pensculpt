@@ -208,4 +208,64 @@ final class DrawingViewModelTests: XCTestCase {
         vm.clearStrokes()
         XCTAssertTrue(vm.canvas.strokes.isEmpty)
     }
+
+    // MARK: - 2.5D edit mode
+
+    private func makeVMWithStroke() -> (DrawingViewModel, Stroke) {
+        let stroke = Stroke(points: [
+            StrokePoint(location: CGPoint(x: 10, y: 10), pressure: 1, tilt: 0, azimuth: 0, timestamp: 0),
+            StrokePoint(location: CGPoint(x: 90, y: 90), pressure: 1, tilt: 0, azimuth: 0, timestamp: 0.1)
+        ])
+        var canvas = Canvas(size: CGSize(width: 1024, height: 1366))
+        canvas.addStroke(stroke)
+        return (DrawingViewModel(canvas: canvas), stroke)
+    }
+
+    func testLassoCommitWithSelectionEntersEditMode() {
+        let (vm, _) = makeVMWithStroke()
+        vm.appMode = .select
+        // Polygon fully surrounding the stroke.
+        vm.handleLassoCompleted(polygon: [
+            CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0),
+            CGPoint(x: 100, y: 100), CGPoint(x: 0, y: 100)
+        ])
+        XCTAssertTrue(vm.hasSelection)
+        XCTAssertEqual(vm.appMode, .edit)
+    }
+
+    func testLassoCommitWithEmptySelectionStaysInSelectMode() {
+        let (vm, _) = makeVMWithStroke()
+        vm.appMode = .select
+        vm.handleLassoCompleted(polygon: [
+            CGPoint(x: 500, y: 500), CGPoint(x: 510, y: 500), CGPoint(x: 510, y: 510)
+        ])
+        XCTAssertFalse(vm.hasSelection)
+        XCTAssertEqual(vm.appMode, .select)
+    }
+
+    func testSmartSelectCommitEntersEditMode() {
+        let (vm, stroke) = makeVMWithStroke()
+        vm.appMode = .select
+        vm.handleSmartSelectCommitted(strokeIDs: [stroke.id])
+        XCTAssertEqual(vm.appMode, .edit)
+    }
+
+    func testExitEditModeResetsSelection() {
+        let (vm, stroke) = makeVMWithStroke()
+        vm.appMode = .select
+        vm.handleSmartSelectCommitted(strokeIDs: [stroke.id])
+        vm.exitEditMode()
+        XCTAssertEqual(vm.appMode, .draw)
+        XCTAssertFalse(vm.hasSelection)
+        XCTAssertTrue(vm.lassoPoints.isEmpty)
+        XCTAssertEqual(vm.activeStrategy, .lasso)
+    }
+
+    func testToggleModeIsIgnoredWhileEditing() {
+        let (vm, stroke) = makeVMWithStroke()
+        vm.appMode = .select
+        vm.handleSmartSelectCommitted(strokeIDs: [stroke.id])
+        vm.toggleMode()
+        XCTAssertEqual(vm.appMode, .edit)
+    }
 }
