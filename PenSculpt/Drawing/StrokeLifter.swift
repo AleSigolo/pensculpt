@@ -14,8 +14,8 @@ enum StrokeLifter {
     /// `size = pressure * 8` and SurfaceStroke.projectTo2D's `pressure = width / 8`.
     static let widthPerPressure: Float = 8
 
-    /// Projects `strokes` onto the mesh with −z rays from the viewer side
-    /// (same convention as SculptRenderer.hitTest — see "Picking-ray
+    /// Projects `strokes` onto the BVH's mesh with −z rays from the viewer
+    /// side (same convention as SculptRenderer.hitTest — see "Picking-ray
     /// conventions" in the plan header; hits are nudged +z toward the viewer
     /// by `offset`).
     ///
@@ -26,7 +26,7 @@ enum StrokeLifter {
     /// dropped. Source strokes contributing zero segments are reported in
     /// `unliftedStrokeIDs` so commit can carry them through unmodified
     /// instead of deleting them.
-    static func lift(_ strokes: [Stroke], onto mesh: Mesh, bvh: MeshBVH,
+    static func lift(_ strokes: [Stroke], bvh: MeshBVH,
                      offset: Float, maxTJump: Float = 50)
         -> (lifted: [SurfaceStroke], unliftedStrokeIDs: Set<UUID>) {
         let direction = SIMD3<Float>(0, 0, -1)

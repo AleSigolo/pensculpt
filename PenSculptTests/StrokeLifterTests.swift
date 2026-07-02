@@ -52,7 +52,7 @@ final class StrokeLifterTests: XCTestCase {
     private func lift(_ strokes: [Stroke], onto mesh: Mesh, offset: Float,
                       maxTJump: Float = 50)
         -> (lifted: [SurfaceStroke], unliftedStrokeIDs: Set<UUID>) {
-        StrokeLifter.lift(strokes, onto: mesh, bvh: MeshBVH(mesh: mesh),
+        StrokeLifter.lift(strokes, bvh: MeshBVH(mesh: mesh),
                           offset: offset, maxTJump: maxTJump)
     }
 
