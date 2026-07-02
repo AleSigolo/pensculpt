@@ -129,8 +129,13 @@ primary loop of rotate-a-bit, draw-a-bit.
 ### Data flow
 
 **Entry** (selection committed):
-1. `DrawingViewModel` resolves the selection → existing object (by
-   `sourceStrokeIDs` overlap, as today) or kicks off `ShapeInflater` async.
+1. The session resolves the selection → existing object by **exact
+   `sourceStrokeIDs` match** or kicks off `ShapeInflater` async. *(As-built
+   amendment: overlap matching was dropped — a bake rewrites the object's
+   source identity to exactly the inserted ink, so re-entry is exact-match
+   only, and commit prunes any object whose source strokes no longer exist
+   on the canvas; orphaned objects can never be re-entered and must not
+   accumulate in the document.)*
 2. Source `PKStroke`s are removed from `pkDrawing` (kept in `canvas.strokes`,
    flagged hidden for the session); the overlay fades in.
 3. When the mesh is ready, `StrokeLifter.lift` maps source strokes onto it;

@@ -416,11 +416,20 @@ struct DrawingScreen: View {
             for id in sculptObjects[idx].sourceStrokeIDs where !unliftedSourceIDs.contains(id) {
                 vm.removeStroke(id: id)
             }
-            // Re-selection of "the shape" must match baked ink + carried-through
-            // originals, so both sets form the object's new source identity.
-            sculptObjects[idx].sourceStrokeIDs = Set(insertedBaked.map(\.id))
-                .union(unliftedSourceIDs)
-            sculptObjects[idx].unliftedStrokeIDs = unliftedSourceIDs
+            if insertedBaked.isEmpty {
+                // The user erased all surface ink: nothing bakes back, so the
+                // object would retain only unmatchable IDs. Spec error
+                // handling: "originals are simply removed; object is
+                // discarded". Unlifted originals still carry through
+                // untouched as ordinary flat ink.
+                sculptObjects.remove(at: idx)
+            } else {
+                // Re-selection of "the shape" must match baked ink + carried-through
+                // originals, so both sets form the object's new source identity.
+                sculptObjects[idx].sourceStrokeIDs = Set(insertedBaked.map(\.id))
+                    .union(unliftedSourceIDs)
+                sculptObjects[idx].unliftedStrokeIDs = unliftedSourceIDs
+            }
         }
 
         // Insert the baked ink into both stores (kept parallel: both appended at the end).
@@ -430,6 +439,15 @@ struct DrawingScreen: View {
             newPKStrokes.append(StrokeConverter.toPKStroke(stroke))
         }
         pkDrawing = PKDrawing(strokes: pkDrawing.strokes + newPKStrokes)
+
+        // Prune fully-orphaned objects: an object whose source ink no longer
+        // exists on the canvas can never be re-entered (entry is an exact
+        // sourceStrokeIDs match), so without pruning they accumulate in the
+        // document forever. The committed object's new sourceStrokeIDs are
+        // live by construction, so it survives. Covered by the same undo
+        // registration below (preSessionObjects restore).
+        let liveIDs = Set(vm.canvas.strokes.map(\.id))
+        sculptObjects.removeAll { $0.sourceStrokeIDs.isDisjoint(with: liveIDs) }
 
         hiddenPKStrokes = []
         editSourceStrokes = []
