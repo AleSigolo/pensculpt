@@ -652,18 +652,8 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     }
 
     static func orthographicProjection(left: Float, right: Float, bottom: Float, top: Float, near: Float, far: Float) -> simd_float4x4 {
-        let sx = 2.0 / (right - left)
-        let sy = 2.0 / (top - bottom)
-        let sz = -2.0 / (far - near)
-        let tx = -(right + left) / (right - left)
-        let ty = -(top + bottom) / (top - bottom)
-        let tz = -(far + near) / (far - near)
-        return simd_float4x4(columns: (
-            SIMD4<Float>(sx, 0, 0, 0),
-            SIMD4<Float>(0, sy, 0, 0),
-            SIMD4<Float>(0, 0, sz, 0),
-            SIMD4<Float>(tx, ty, tz, 1)
-        ))
+        CameraTransform.orthographic(left: left, right: right, bottom: bottom,
+                                     top: top, near: near, far: far)
     }
 
     private func translationMatrix(_ x: Float, _ y: Float, _ z: Float) -> simd_float4x4 {
