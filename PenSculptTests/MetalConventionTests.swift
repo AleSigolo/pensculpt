@@ -52,10 +52,18 @@ final class MetalConventionTests: XCTestCase {
             var color: SIMD4<Float>
         }
 
-        init?() {
-            guard let device = MTLCreateSystemDefaultDevice(),
-                  let queue = device.makeCommandQueue(),
-                  let library = device.makeDefaultLibrary() else { return nil }
+        struct SetupError: Error, CustomStringConvertible {
+            let reason: String
+            var description: String { reason }
+        }
+
+        init(device: MTLDevice) throws {
+            guard let queue = device.makeCommandQueue() else {
+                throw SetupError(reason: "makeCommandQueue() returned nil")
+            }
+            guard let library = device.makeDefaultLibrary() else {
+                throw SetupError(reason: "makeDefaultLibrary() returned nil (shader library missing from test host)")
+            }
             self.device = device
             self.queue = queue
 
@@ -93,12 +101,22 @@ final class MetalConventionTests: XCTestCase {
             strokeDepthDesc.depthCompareFunction = .lessEqual
             strokeDepthDesc.isDepthWriteEnabled = false
 
-            guard let mp = try? device.makeRenderPipelineState(descriptor: meshDesc),
-                  let sp = try? device.makeRenderPipelineState(descriptor: strokeDesc),
-                  let mds = device.makeDepthStencilState(descriptor: meshDepthDesc),
-                  let sds = device.makeDepthStencilState(descriptor: strokeDepthDesc) else { return nil }
-            meshPipeline = mp
-            strokePipeline = sp
+            do {
+                meshPipeline = try device.makeRenderPipelineState(descriptor: meshDesc)
+            } catch {
+                throw SetupError(reason: "mesh pipeline compilation failed: \(error)")
+            }
+            do {
+                strokePipeline = try device.makeRenderPipelineState(descriptor: strokeDesc)
+            } catch {
+                throw SetupError(reason: "stroke pipeline compilation failed: \(error)")
+            }
+            guard let mds = device.makeDepthStencilState(descriptor: meshDepthDesc) else {
+                throw SetupError(reason: "mesh depth-stencil state creation failed")
+            }
+            guard let sds = device.makeDepthStencilState(descriptor: strokeDepthDesc) else {
+                throw SetupError(reason: "stroke depth-stencil state creation failed")
+            }
             meshDepthState = mds
             strokeDepthState = sds
         }
@@ -207,7 +225,39 @@ final class MetalConventionTests: XCTestCase {
         }
     }
 
-    private static let harness = Harness()
+    private enum HarnessState {
+        case ready(Harness)
+        case noMetalDevice
+        case setupFailed(String)
+    }
+
+    private static let harnessState: HarnessState = {
+        guard let device = MTLCreateSystemDefaultDevice() else { return .noMetalDevice }
+        do {
+            return .ready(try Harness(device: device))
+        } catch {
+            return .setupFailed(String(describing: error))
+        }
+    }()
+
+    /// These convention pins are load-bearing: a silently skipped suite would
+    /// vacate them. Any setup problem on a machine that HAS a Metal device is
+    /// therefore a test FAILURE, not a skip. The only allowed skip is when
+    /// MTLCreateSystemDefaultDevice() itself returns nil — i.e. a genuinely
+    /// Metal-less environment (e.g. a bare CI container with no GPU stack).
+    /// The iOS simulator provides Metal, so on any supported dev machine the
+    /// suite runs.
+    private func requireHarness() throws -> Harness {
+        switch Self.harnessState {
+        case .ready(let harness):
+            return harness
+        case .noMetalDevice:
+            throw XCTSkip("No Metal device in this environment (MTLCreateSystemDefaultDevice() == nil)")
+        case .setupFailed(let reason):
+            XCTFail("Metal convention harness setup failed: \(reason)")
+            throw Harness.SetupError(reason: reason)
+        }
+    }
 
     /// Pixel at screen (x, y) as (b, g, r, a).
     private func pixel(_ pixels: [UInt8], _ x: Int, _ y: Int, width: Int = 100) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8) {
@@ -292,7 +342,7 @@ final class MetalConventionTests: XCTestCase {
     /// z > 0 AND z < 0 renders. Under the old GL-convention matrix every
     /// z > 0 quad here rendered zero pixels.
     func testFullDepthRangeRendersWithoutClipping() throws {
-        guard let h = Self.harness else { throw XCTSkip("Metal unavailable") }
+        let h = try requireHarness()
         let mvp = makeCam().mvpMatrix
         for z in [Float(10), -10, 1000, -1000] {
             let px = try XCTUnwrap(h.render(mvp: mvp, meshes: [quad(z: z, doubleSided: true)],
@@ -306,7 +356,7 @@ final class MetalConventionTests: XCTestCase {
     /// sheet that colors the pixels is the VIEWER-FACING one: z = +d with
     /// shading normal +z, so it is lit (bright), not ambient-only.
     func testViewerFacingSheetSurvivesCullAndDepth() throws {
-        guard let h = Self.harness else { throw XCTSkip("Metal unavailable") }
+        let h = try requireHarness()
         let mvp = makeCam().mvpMatrix
 
         let px = try XCTUnwrap(h.render(mvp: mvp, meshes: [pillow(d: 5)]))
@@ -337,7 +387,7 @@ final class MetalConventionTests: XCTestCase {
     /// and castOntoMesh now produce) renders on top of the mesh under the
     /// .lessEqual no-write stroke depth state; an offset behind is hidden.
     func testSurfaceStrokeOffsetRendersOnTopOfMesh() throws {
-        guard let h = Self.harness else { throw XCTSkip("Metal unavailable") }
+        let h = try requireHarness()
         let mvp = makeCam().mvpMatrix
         let mesh = quad(z: 5, doubleSided: true)
         let red = SIMD4<Float>(1, 0, 0, 1)
@@ -355,10 +405,55 @@ final class MetalConventionTests: XCTestCase {
                        "Stroke offset behind the surface must be depth-rejected (mesh gray, not red)")
     }
 
+    /// Companion to the pillow pin above: the pillow is a HAND-TRANSCRIBED
+    /// replica of ShapeInflater's winding, so it could silently drift from the
+    /// real thing. This renders ACTUAL ShapeInflater.inflate output (a circle
+    /// of ink → inflated dome) through the production pipeline/camera and
+    /// asserts the viewer-facing sheet renders lit — pinning the inflater's
+    /// winding itself, not a transcription of it.
+    func testRealShapeInflaterOutputRendersLit() throws {
+        let h = try requireHarness()
+
+        // Closed circle in canvas coordinates, centered in the 100x100 view.
+        let points = (0...64).map { i -> StrokePoint in
+            let angle = CGFloat(i) / 64 * 2 * .pi
+            return StrokePoint(location: CGPoint(x: 50 + 35 * cos(angle),
+                                                 y: 50 + 35 * sin(angle)),
+                               pressure: 1, tilt: 0, azimuth: 0,
+                               timestamp: TimeInterval(i) * 0.01)
+        }
+        let mesh = ShapeInflater.inflate(strokes: [Stroke(points: points)])
+        XCTAssertFalse(mesh.isEmpty, "ShapeInflater must inflate a closed circle")
+
+        // Standard edit camera and the production cull config (.back/.clockwise).
+        let px = try XCTUnwrap(h.render(
+            mvp: makeCam().mvpMatrix,
+            meshes: [Harness.MeshDraw(vertices: mesh.vertices, faces: mesh.faces)]))
+
+        // The inflated disk (radius ~35 → ~3800 px) must survive the cull...
+        XCTAssertGreaterThan(coveredPixelCount(px), 2500,
+                             "Inflated mesh must render with non-trivial coverage")
+        // ...and the pixels must come from the LIT viewer-facing sheet
+        // (shading normal ≈ +z → ~0.9 → ~229). If the winding regressed, the
+        // ambient-only back sheet (~0.4 → ~102) would render instead.
+        let center = pixel(px, 50, 50)
+        XCTAssertGreaterThan(center.r, 200,
+            "Dome center must come from the lit viewer-facing sheet, got r=\(center.r)")
+        var litCount = 0
+        for y in 0..<h.height {
+            for x in 0..<h.width {
+                let c = pixel(px, x, y)
+                if c.a > 0 && c.r > 200 { litCount += 1 }
+            }
+        }
+        XCTAssertGreaterThan(litCount, 500,
+            "Viewer-facing sheet must render a non-trivial lit region, got \(litCount) lit px")
+    }
+
     /// Legacy sculpt camera (combinedProjection: object-fit ortho * default
     /// −0.8 x-tilt view) still renders the pillow after the depth-mapping fix.
     func testLegacyCombinedCameraStillRendersPillow() throws {
-        guard let h = Self.harness else { throw XCTSkip("Metal unavailable") }
+        let h = try requireHarness()
         // Replicate SculptRenderer.combinedProjection for the pillow fixture:
         // center (50,−50,0), extent 80 → radius 52, square view.
         let r: Float = 52
@@ -377,7 +472,7 @@ final class MetalConventionTests: XCTestCase {
     /// canvas plane. Under the old matrix the half rotated into z > 0
     /// disappeared (2240 covered pixels instead of ~4480).
     func testRotated45DegreesRendersBothHalves() throws {
-        guard let h = Self.harness else { throw XCTSkip("Metal unavailable") }
+        let h = try requireHarness()
         let rotCam = makeCam(orientation: simd_quatf(angle: .pi / 4, axis: SIMD3(0, 1, 0)))
         let px = try XCTUnwrap(h.render(mvp: rotCam.mvpMatrix,
                                         meshes: [quad(z: 0, doubleSided: true)],
