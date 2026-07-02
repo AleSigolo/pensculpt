@@ -49,6 +49,14 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     var currentStrokeWidths: [Float] = []
     var brushOpacity: Float = 1
     var lastHitT: Float = 0
+    /// When set, the renderer uses the in-place 2.5D camera pivoting here
+    /// instead of the legacy object-fit camera. World units == canvas points.
+    var editPivot: SIMD3<Float>?
+    /// Uniform model scale for the edit camera (pinch-to-scale).
+    var modelScale: Float = 1
+    /// In-progress flat 2D stroke preview (world canvas plane, z = 0).
+    var currentCanvasStrokePoints: [SIMD3<Float>] = []
+    var currentCanvasStrokeWidths: [Float] = []
 
     private struct MeshBuffers {
         let vertex: MTLBuffer
@@ -164,9 +172,10 @@ class SculptRenderer: NSObject, MTKViewDelegate {
               let commandBuffer = commandQueue.makeCommandBuffer(),
               let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else { return }
 
-        let mvp = combinedProjection(viewSize: view.bounds.size)
+        let mvp = currentMVP(viewSize: view.bounds.size)
+        let canvasMVP = editCamera(viewSize: view.bounds.size)?.canvasMVP ?? mvp
         drawAllMeshes(mvp: mvp, encoder: encoder)
-        drawSurfaceStrokes(mvp: mvp, encoder: encoder)
+        drawSurfaceStrokes(mvp: mvp, canvasOnlyMVP: canvasMVP, encoder: encoder)
 
         encoder.endEncoding()
         commandBuffer.present(drawable)
@@ -197,7 +206,7 @@ class SculptRenderer: NSObject, MTKViewDelegate {
             var uniforms = MeshRenderUniforms(
                 mvpMatrix: mvp,
                 lightDirection: normalize(SIMD3<Float>(0.3, 0.6, 1.0)),
-                baseColor: isActive ? SIMD3(0.85, 0.85, 0.9) : SIMD3(0.5, 0.5, 0.55)
+                baseColor: isActive ? SIMD3(0.93, 0.93, 0.91) : SIMD3(0.5, 0.5, 0.55)
             )
 
             encoder.setVertexBuffer(b.vertex, offset: 0, index: 0)
@@ -221,8 +230,12 @@ class SculptRenderer: NSObject, MTKViewDelegate {
     }
 
     func zoom(by scale: Float) {
-        combinedRadius /= scale
-        combinedRadius = max(combinedRadius, 0.1)
+        if editPivot != nil {
+            modelScale = min(max(modelScale * scale, 0.2), 5)
+        } else {
+            combinedRadius /= scale
+            combinedRadius = max(combinedRadius, 0.1)
+        }
     }
 
     func rotate(dx: Float, dy: Float) {
@@ -249,6 +262,39 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         return proj * view
     }
 
+    /// The active camera: in-place edit camera when editPivot is set, else legacy.
+    func currentMVP(viewSize: CGSize) -> simd_float4x4 {
+        if let cam = editCamera(viewSize: viewSize) { return cam.mvpMatrix }
+        return combinedProjection(viewSize: viewSize)
+    }
+
+    func editCamera(viewSize: CGSize) -> CameraTransform? {
+        guard let pivot = editPivot else { return nil }
+        // A zero view size (MTKView before layout) would NaN-poison the MVP
+        // and its inverse; skip the edit camera until the view has a size.
+        guard viewSize.width > 0, viewSize.height > 0 else { return nil }
+        return CameraTransform(viewSize: viewSize, center: pivot,
+                               orientation: rotation, scale: modelScale)
+    }
+
+    /// Screen point → world-space picking ray under the active camera.
+    /// Replaces the unproject blocks duplicated in hitTest/deformMesh/smoothMesh.
+    /// NDC z 0 → 1: origin on the viewer side, ray travels into the scene
+    /// (Metal depth convention — see "Picking-ray conventions" in
+    /// MetalConventionTests and CameraTransform).
+    func unprojectRay(screenPoint: CGPoint, viewSize: CGSize)
+        -> (origin: SIMD3<Float>, direction: SIMD3<Float>) {
+        if let cam = editCamera(viewSize: viewSize) { return cam.ray(from: screenPoint) }
+        let invMVP = combinedProjection(viewSize: viewSize).inverse
+        let ndcX = Float(2 * screenPoint.x / viewSize.width - 1)
+        let ndcY = Float(1 - 2 * screenPoint.y / viewSize.height)
+        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 0, 1)
+        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
+        let origin = SIMD3<Float>(origin4.x, origin4.y, origin4.z) / origin4.w
+        let target = SIMD3<Float>(target4.x, target4.y, target4.z) / target4.w
+        return (origin, normalize(target - origin))
+    }
+
     private func recomputeCombinedBounds() {
         var minP = SIMD3<Float>(Float.infinity, Float.infinity, Float.infinity)
         var maxP = SIMD3<Float>(-Float.infinity, -Float.infinity, -Float.infinity)
@@ -268,7 +314,8 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
     // MARK: - Surface stroke rendering
 
-    private func drawSurfaceStrokes(mvp: simd_float4x4, encoder: MTLRenderCommandEncoder) {
+    private func drawSurfaceStrokes(mvp: simd_float4x4, canvasOnlyMVP: simd_float4x4,
+                                    encoder: MTLRenderCommandEncoder) {
         encoder.setRenderPipelineState(surfaceStrokePipeline)
         encoder.setDepthStencilState(surfaceStrokeDepthState)
         encoder.setCullMode(.none)
@@ -279,7 +326,9 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
         for obj in sculptObjects where obj.id == activeObjectID {
             for stroke in obj.surfaceStrokes {
-                let color = SIMD4<Float>(0.2, 0.2, 0.8, stroke.opacity)
+                let c = stroke.color
+                let color = SIMD4<Float>(Float(c.red), Float(c.green), Float(c.blue),
+                                         Float(c.alpha) * stroke.opacity)
                 drawStrokeStrip(stroke.points, widths: stroke.widths, color: color, encoder: encoder)
             }
         }
@@ -289,14 +338,25 @@ class SculptRenderer: NSObject, MTKViewDelegate {
                 ? [Float](repeating: config.surfaceStrokeWidth, count: currentStrokePoints.count)
                 : currentStrokeWidths
             drawStrokeStrip(currentStrokePoints, widths: widths,
-                            color: SIMD4<Float>(0.2, 0.2, 0.8, brushOpacity * 0.6), encoder: encoder)
+                            color: SIMD4<Float>(0, 0, 0, brushOpacity * 0.6), encoder: encoder)
+        }
+
+        // In-progress flat 2D stroke beside the shape (edit mode only): drawn
+        // on the canvas plane with the projection-only MVP so it stays put
+        // while the model rotates.
+        if editPivot != nil, currentCanvasStrokePoints.count > 1 {
+            var canvasUniforms = StrokeRenderUniforms(mvpMatrix: canvasOnlyMVP)
+            encoder.setVertexBytes(&canvasUniforms, length: MemoryLayout<StrokeRenderUniforms>.size, index: 2)
+            drawStrokeStrip(currentCanvasStrokePoints, widths: currentCanvasStrokeWidths,
+                            color: SIMD4<Float>(0, 0, 0, 0.9), encoder: encoder,
+                            faceCamera: false)
         }
     }
 
     private func drawStrokeStrip(_ points: [SIMD3<Float>], widths: [Float], color: SIMD4<Float>,
-                                  encoder: MTLRenderCommandEncoder) {
+                                  encoder: MTLRenderCommandEncoder, faceCamera: Bool = true) {
         guard points.count > 1 else { return }
-        var stripVerts = buildTriangleStrip(points: points, widths: widths)
+        var stripVerts = buildTriangleStrip(points: points, widths: widths, faceCamera: faceCamera)
         var colors = [SIMD4<Float>](repeating: color, count: stripVerts.count)
 
         guard let posBuffer = makeBuffer(&stripVerts),
@@ -307,8 +367,13 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: stripVerts.count)
     }
 
-    private func buildTriangleStrip(points: [SIMD3<Float>], widths: [Float]) -> [SIMD3<Float>] {
-        let viewDir = simd_act(simd_inverse(rotation), SIMD3<Float>(0, 0, -1))
+    private func buildTriangleStrip(points: [SIMD3<Float>], widths: [Float],
+                                    faceCamera: Bool = true) -> [SIMD3<Float>] {
+        // Flat canvas-plane strokes face the viewer at +z directly (look
+        // direction (0, 0, -1)); surface strokes counter-rotate with the model.
+        let viewDir = faceCamera
+            ? simd_act(simd_inverse(rotation), SIMD3<Float>(0, 0, -1))
+            : SIMD3<Float>(0, 0, -1)
         var vertices: [SIMD3<Float>] = []
         vertices.reserveCapacity(points.count * 2)
         var lastRight = SIMD3<Float>(1, 0, 0)
@@ -348,20 +413,7 @@ class SculptRenderer: NSObject, MTKViewDelegate {
               let obj = sculptObjects.first(where: { $0.id == activeID }),
               !obj.mesh.isEmpty else { return nil }
 
-        let mvp = combinedProjection(viewSize: viewSize)
-        let invMVP = mvp.inverse
-
-        let ndcX = Float(2 * screenPoint.x / viewSize.width - 1)
-        let ndcY = Float(1 - 2 * screenPoint.y / viewSize.height)
-
-        // NDC z = 0 is the near plane (viewer side); the ray travels through
-        // the scene toward NDC z = 1. Starting the ray on the viewer side
-        // makes smallest t = nearest to viewer.
-        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 0, 1)
-        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
-        let origin = SIMD3<Float>(origin4.x, origin4.y, origin4.z) / origin4.w
-        let target = SIMD3<Float>(target4.x, target4.y, target4.z) / target4.w
-        let direction = normalize(target - origin)
+        let (origin, direction) = unprojectRay(screenPoint: screenPoint, viewSize: viewSize)
 
         guard let bvh = bvhCache[activeID] else { return nil }
         guard let result = bvh.raycast(origin: origin, direction: direction) else { return nil }
@@ -497,8 +549,7 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         let mesh = sculptObjects[idx].mesh
         guard !mesh.isEmpty else { return }
 
-        let mvp = combinedProjection(viewSize: viewSize)
-        let invMVP = mvp.inverse
+        let invMVP = currentMVP(viewSize: viewSize).inverse
 
         // Convert screen velocity to world-space displacement direction
         let dxNDC = Float(screenVelocity.x * 2 / viewSize.width)
@@ -512,14 +563,8 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         guard moveDirLen > 0.001 else { return }
         let worldDir = moveDir / moveDirLen
 
-        // Ray cast to find the deformation center (viewer side NDC z=0 → scene NDC z=1)
-        let ndcX = Float(2 * screenPoint.x / viewSize.width - 1)
-        let ndcY = Float(1 - 2 * screenPoint.y / viewSize.height)
-        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 0, 1)
-        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
-        let origin = SIMD3<Float>(origin4.x, origin4.y, origin4.z) / origin4.w
-        let target = SIMD3<Float>(target4.x, target4.y, target4.z) / target4.w
-        let direction = normalize(target - origin)
+        // Ray cast to find the deformation center
+        let (origin, direction) = unprojectRay(screenPoint: screenPoint, viewSize: viewSize)
 
         guard let bvh = getOrCreateBVH(for: activeID, mesh: mesh),
               let result = bvh.raycast(origin: origin, direction: direction) else { return }
@@ -596,16 +641,7 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         let mesh = sculptObjects[idx].mesh
         guard !mesh.isEmpty else { return }
 
-        let mvp = combinedProjection(viewSize: viewSize)
-        let invMVP = mvp.inverse
-
-        let ndcX = Float(2 * screenPoint.x / viewSize.width - 1)
-        let ndcY = Float(1 - 2 * screenPoint.y / viewSize.height)
-        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 0, 1)
-        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
-        let origin = SIMD3<Float>(origin4.x, origin4.y, origin4.z) / origin4.w
-        let target = SIMD3<Float>(target4.x, target4.y, target4.z) / target4.w
-        let direction = normalize(target - origin)
+        let (origin, direction) = unprojectRay(screenPoint: screenPoint, viewSize: viewSize)
 
         guard let bvh = getOrCreateBVH(for: activeID, mesh: mesh),
               let result = bvh.raycast(origin: origin, direction: direction) else { return }

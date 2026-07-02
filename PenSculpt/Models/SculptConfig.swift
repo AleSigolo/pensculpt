@@ -63,8 +63,7 @@ struct SculptConfig: Codable, Equatable, Sendable {
     var surfaceStrokeMaxTJump: Float = 50
 
     /// Display mode: "shaded" for lit surface, "wireframe" for debug mesh.
-    /// var displayMode: String = "shaded"
-    var displayMode: String = "wireframe"
-    ///
+    var displayMode: String = "shaded"
+
     static let `default` = SculptConfig()
 }
