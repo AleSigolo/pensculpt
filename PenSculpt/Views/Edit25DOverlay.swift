@@ -13,8 +13,6 @@ struct Edit25DOverlay: View {
     var onCanvasStroke: (Stroke) -> Void
     /// Inference produced no usable mesh — abandon the session.
     var onInferenceFailed: () -> Void
-    /// Open the full-screen sculpt workspace (SculptScreen) for this object.
-    var onExpandRequested: () -> Void
     /// Reports the source strokes that could NOT be lifted onto the mesh
     /// (empty when everything lifted). DrawingScreen un-hides these so they
     /// stay visible flat ink and survive commit untouched.
@@ -30,8 +28,10 @@ struct Edit25DOverlay: View {
     @State private var savedDrawOpacity: CGFloat = 1
     @State private var deformCursor: (position: CGPoint, radius: CGFloat)?
     @State private var isInferring = false
+    @State private var showFullSculpt = false
     @State private var sessionOrientation = simd_quatf(vector: SIMD4(0, 0, 0, 1))
     @State private var sessionScale: Float = 1
+    @State private var rendererReplaceMesh: ((UUID, Mesh, [SurfaceStroke]?) -> Void)?
     @State private var rendererCacheBVH: ((UUID, MeshBVH) -> Void)?
     @State private var inferenceTask: Task<Void, Never>?
 
@@ -52,8 +52,11 @@ struct Edit25DOverlay: View {
                     onSurfaceStrokeCompleted: handleSurfaceStroke,
                     onMeshDeformed: handleMeshDeformed,
                     onDeformCursor: { deformCursor = $0 },
-                    onRendererReady: { _, _, cacheBVH in
-                        Task { @MainActor in rendererCacheBVH = cacheBVH }
+                    onRendererReady: { replace, _, cacheBVH in
+                        Task { @MainActor in
+                            rendererReplaceMesh = replace
+                            rendererCacheBVH = cacheBVH
+                        }
                     },
                     editSession: .init(objectID: objectID,
                                        pivot: pivot(for: obj),
@@ -89,7 +92,12 @@ struct Edit25DOverlay: View {
         }
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 12) {
-                Button(action: onExpandRequested) {
+                Button {
+                    // The post-commit window (activeObjectID latched to nil)
+                    // must never present the workspace for a finished session.
+                    guard activeObjectID != nil else { return }
+                    showFullSculpt = true
+                } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right.circle.fill")
                         .font(.largeTitle)
                         .symbolRenderingMode(.hierarchical)
@@ -165,6 +173,11 @@ struct Edit25DOverlay: View {
         .onReceive(NotificationCenter.default.publisher(for: .pencilDoubleTap)) { _ in
             if isDeformMode { isSmoothMode.toggle() } else { isEraseStrokeMode.toggle() }
         }
+        .fullScreenCover(isPresented: $showFullSculpt, onDismiss: refreshRendererAfterExpand) {
+            if !sourceStrokes.isEmpty {
+                SculptScreen(strokes: sourceStrokes, sculptObjects: $sculptObjects)
+            }
+        }
         .onAppear(perform: startSession)
         .onDisappear { inferenceTask?.cancel() }
     }
@@ -225,6 +238,23 @@ struct Edit25DOverlay: View {
                 rendererCacheBVH?(newObj.id, bvh)
                 isInferring = false
                 onSourceStrokesLifted(lift.unliftedStrokeIDs)
+            }
+        }
+    }
+
+    /// The expanded workspace ran its own renderer on the shared model;
+    /// deforms or re-infers made there leave this overlay's renderer holding a
+    /// stale vertex buffer and BVH for the session object. Re-push the mesh
+    /// (replaceMesh clears both caches for the id) and rebuild the BVH.
+    private func refreshRendererAfterExpand() {
+        guard let objectID = activeObjectID,
+              let obj = sculptObjects.first(where: { $0.id == objectID }) else { return }
+        rendererReplaceMesh?(objectID, obj.mesh, obj.surfaceStrokes)
+        let mesh = obj.mesh
+        Task.detached {
+            let bvh = MeshBVH(mesh: mesh)
+            await MainActor.run {
+                rendererCacheBVH?(objectID, bvh)
             }
         }
     }

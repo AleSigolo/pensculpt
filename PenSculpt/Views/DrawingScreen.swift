@@ -13,7 +13,6 @@ struct DrawingScreen: View {
     @State private var editSourceStrokes: [Stroke] = []
     @State private var unliftedSourceIDs: Set<UUID> = []
     @State private var showInferenceFailedToast = false
-    @State private var showFullSculpt = false
     @Environment(\.undoManager) private var undoManager
 
     init(canvas: Binding<Canvas>, drawingData: Binding<Data>, sculptObjects: Binding<[SculptObject]>) {
@@ -33,9 +32,6 @@ struct DrawingScreen: View {
             if vm.appMode == .edit { editOverlay }
         }
         .overlay(alignment: .top) { savedMessageOverlay }
-        .fullScreenCover(isPresented: $showFullSculpt) {
-            SculptScreen(strokes: editSourceStrokes, sculptObjects: $sculptObjects)
-        }
         .toolbar { navBarItems }
         .onAppear { loadDrawingData() }
         .onChange(of: vm.appMode) { oldMode, newMode in
@@ -262,7 +258,6 @@ struct DrawingScreen: View {
             onCommit: handleEditCommit,
             onCanvasStroke: handleEditCanvasStroke,
             onInferenceFailed: cancelEditSession,
-            onExpandRequested: { showFullSculpt = true },
             onSourceStrokesLifted: handleSourceStrokesLifted
         )
         .ignoresSafeArea()
