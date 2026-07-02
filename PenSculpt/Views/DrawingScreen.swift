@@ -264,6 +264,7 @@ struct DrawingScreen: View {
             onCommit: handleEditCommit,
             onCanvasStroke: handleEditCanvasStroke,
             onInferenceFailed: cancelEditSession,
+            onSessionInvalidated: dismantleEditSession,
             onSourceStrokesLifted: handleSourceStrokesLifted
         )
         .ignoresSafeArea()
@@ -318,6 +319,21 @@ struct DrawingScreen: View {
         hiddenPKStrokes = removed
         unliftedSourceIDs = []
         pkDrawing = PKDrawing(strokes: kept)
+    }
+
+    /// Teardown for an EXTERNALLY invalidated session: an undo restored
+    /// canvas/pkDrawing/sculptObjects as a consistent pre-commit triple out
+    /// from under the session, so its bookkeeping is stale. Unlike
+    /// cancelEditSession — whose re-insertion is only valid while pkDrawing
+    /// still holds the session's kept-drawing — nothing may be re-inserted
+    /// here (hiddenPKStrokes would duplicate ink the undo already restored),
+    /// and no toast: the undo's effect is already visible on the canvas.
+    private func dismantleEditSession() {
+        hiddenPKStrokes = []
+        editSourceStrokes = []
+        unliftedSourceIDs = []
+        preSessionObjects = []
+        withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
     }
 
     /// Inference failed: restore the hidden ink exactly as it was.
