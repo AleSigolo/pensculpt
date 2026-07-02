@@ -92,24 +92,27 @@ struct DrawingScreen: View {
 
     @ViewBuilder
     private var savedMessageOverlay: some View {
-        if vm.showSavedMessage {
-            Text("Saved!")
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
-                .transition(.opacity.combined(with: .move(edge: .top)))
-                .padding(.top, 60)
+        // VStack, not bare siblings: both toasts can be visible at once and
+        // would otherwise render on top of each other in the .top overlay.
+        VStack(spacing: 8) {
+            if vm.showSavedMessage {
+                Text("Saved!")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            if showInferenceFailedToast {
+                Text("Couldn't lift that selection")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        if showInferenceFailedToast {
-            Text("Couldn't lift that selection")
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
-                .transition(.opacity.combined(with: .move(edge: .top)))
-                .padding(.top, 60)
-        }
+        .padding(.top, 60)
     }
 
     private var navBarItems: some ToolbarContent {
