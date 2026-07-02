@@ -300,3 +300,47 @@ final class DrawingViewModelTests: XCTestCase {
         XCTAssertEqual(vm.selectedTool, .pen, "Double-tap should be ignored in edit mode")
     }
 }
+
+/// Pins DrawingScreen.parityInsertionIndex: restored (unlifted) PK strokes
+/// must land where the original stroke will sit once the still-hidden
+/// (lifted) strokes leave the model at commit, keeping canvas.strokes and
+/// pkDrawing.strokes parallel arrays back in draw mode.
+final class EditSessionParityTests: XCTestCase {
+
+    /// Restores `unlifted` (original indices) into `kept`, mirroring
+    /// handleSourceStrokesLifted's insertion loop over string stand-ins.
+    private func restore(unlifted: [Int], stillHidden: [Int], into kept: [String]) -> [String] {
+        var strokes = kept
+        for original in unlifted.sorted() {
+            let idx = DrawingScreen.parityInsertionIndex(originalIndex: original,
+                                                         stillHiddenOriginalIndices: stillHidden)
+            strokes.insert("p\(original)", at: min(idx, strokes.count))
+        }
+        return strokes
+    }
+
+    func testMixedLiftedAndUnliftedRestoresParityOrder() {
+        // Strokes s0–s4, selection {s1, s3}: s1 lifts (stays hidden), s3
+        // doesn't. After commit removes s1 from the model, canvas is
+        // [s0, s2, s3, s4] — pkDrawing must match, not [p0, p2, p4, p3].
+        XCTAssertEqual(DrawingScreen.parityInsertionIndex(originalIndex: 3,
+                                                          stillHiddenOriginalIndices: [1]), 2)
+        let restored = restore(unlifted: [3], stillHidden: [1], into: ["p0", "p2", "p4"])
+        XCTAssertEqual(restored, ["p0", "p2", "p3", "p4"])
+    }
+
+    func testAllUnliftedRestoresOriginalOrder() {
+        // Selection {s1, s3}, nothing lifts: full reconstruction.
+        let restored = restore(unlifted: [1, 3], stillHidden: [], into: ["p0", "p2", "p4"])
+        XCTAssertEqual(restored, ["p0", "p1", "p2", "p3", "p4"])
+    }
+
+    func testUnliftedBelowLiftedIsUnshifted() {
+        // Selection {s1, s3}: s3 lifts, s1 doesn't. No hidden stroke precedes
+        // s1, so it returns to its original position.
+        XCTAssertEqual(DrawingScreen.parityInsertionIndex(originalIndex: 1,
+                                                          stillHiddenOriginalIndices: [3]), 1)
+        let restored = restore(unlifted: [1], stillHidden: [3], into: ["p0", "p2", "p4"])
+        XCTAssertEqual(restored, ["p0", "p1", "p2", "p4"])
+    }
+}

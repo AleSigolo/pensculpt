@@ -133,9 +133,11 @@ struct DrawingScreen: View {
                         .foregroundStyle(vm.autosaveEnabled ? .primary : .secondary)
                 }
 
-                Button { saveToDocument() } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.body)
+                if vm.appMode != .edit {
+                    Button { saveToDocument() } label: {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.body)
+                    }
                 }
             }
         }
@@ -202,6 +204,9 @@ struct DrawingScreen: View {
     }
 
     private func flushToDocument() {
+        // Mid-session pkDrawing intentionally lacks the selection's hidden ink;
+        // that state must never reach disk (it would corrupt the drawing file).
+        guard vm.appMode != .edit else { return }
         drawingSyncTask?.cancel()
         documentCanvas = vm.canvas
         drawingData = pkDrawing.dataRepresentation()
@@ -264,6 +269,15 @@ struct DrawingScreen: View {
         .transition(.opacity)
     }
 
+    /// Index at which a restored (unlifted) PK stroke must be re-inserted so
+    /// the visible pkDrawing stays parity-correct with what canvas.strokes
+    /// becomes once the still-hidden (lifted) strokes leave the model at
+    /// commit: its original index minus the still-hidden strokes before it.
+    nonisolated static func parityInsertionIndex(originalIndex: Int,
+                                                 stillHiddenOriginalIndices: [Int]) -> Int {
+        originalIndex - stillHiddenOriginalIndices.filter { $0 < originalIndex }.count
+    }
+
     /// Some selected strokes couldn't be lifted onto the mesh (e.g. ink the
     /// lasso caught that lies off the inferred shape). Un-hide their PK ink —
     /// they stay ordinary flat strokes and survive commit untouched.
@@ -271,12 +285,15 @@ struct DrawingScreen: View {
         unliftedSourceIDs = unlifted
         guard !unlifted.isEmpty else { return }
         let toRestore = hiddenPKStrokes.filter { unlifted.contains($0.id) }
+        hiddenPKStrokes.removeAll { unlifted.contains($0.id) }
+        let stillHidden = hiddenPKStrokes.map(\.index)
         var strokes = pkDrawing.strokes
         for entry in toRestore.sorted(by: { $0.index < $1.index }) {
-            strokes.insert(entry.stroke, at: min(entry.index, strokes.count))
+            let idx = Self.parityInsertionIndex(originalIndex: entry.index,
+                                                stillHiddenOriginalIndices: stillHidden)
+            strokes.insert(entry.stroke, at: min(idx, strokes.count))
         }
         pkDrawing = PKDrawing(strokes: strokes)
-        hiddenPKStrokes.removeAll { unlifted.contains($0.id) }
     }
 
     /// Snapshot the selection and hide its PK ink so the lifted mesh replaces
