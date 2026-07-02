@@ -12,6 +12,7 @@ struct DrawingScreen: View {
     @State private var hiddenPKStrokes: [(index: Int, id: UUID, stroke: PKStroke)] = []
     @State private var editSourceStrokes: [Stroke] = []
     @State private var unliftedSourceIDs: Set<UUID> = []
+    @State private var preSessionObjects: [SculptObject] = []
     @State private var showInferenceFailedToast = false
     @Environment(\.undoManager) private var undoManager
 
@@ -38,7 +39,12 @@ struct DrawingScreen: View {
             if newMode == .edit { beginEditSession() }
         }
         .onChange(of: vm.canvas) { _, _ in
-            guard vm.autosaveEnabled else { return }
+            // Mid-session, canvas.strokes still holds the lifted originals
+            // while their PK ink is hidden; persisting one store but not the
+            // other would break on-disk positional parity for good. Commit's
+            // changes still land: handleEditCommit calls exitEditMode()
+            // synchronously, so appMode is already .draw when this fires.
+            guard vm.autosaveEnabled, vm.appMode != .edit else { return }
             documentCanvas = vm.canvas
         }
         .onChange(of: pkDrawing) { _, newDrawing in
@@ -57,7 +63,7 @@ struct DrawingScreen: View {
 
     @ViewBuilder
     private var selectionHighlightLayer: some View {
-        if vm.hasSelection {
+        if vm.appMode == .select && vm.hasSelection {
             SelectionHighlight(strokes: vm.canvas.strokes, selectedIDs: vm.selectedStrokeIDs, viewBridge: viewBridge)
         }
     }
@@ -295,6 +301,10 @@ struct DrawingScreen: View {
     /// it visually. canvas.strokes keeps the originals until commit.
     private func beginEditSession() {
         editSourceStrokes = vm.selectedStrokes
+        // Undo of this session's commit must restore the pre-session world,
+        // not a commit-time snapshot that already carries the session's
+        // orientation/scale writes.
+        preSessionObjects = sculptObjects
         let ids = vm.selectedStrokeIDs
         var kept: [PKStroke] = []
         var removed: [(index: Int, id: UUID, stroke: PKStroke)] = []
@@ -320,6 +330,7 @@ struct DrawingScreen: View {
         hiddenPKStrokes = []
         editSourceStrokes = []
         unliftedSourceIDs = []
+        preSessionObjects = []
         withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
         withAnimation { showInferenceFailedToast = true }
         Task {
@@ -345,7 +356,14 @@ struct DrawingScreen: View {
         let previousPKDrawing = PKDrawing(strokes: hiddenPKStrokes
             .sorted(by: { $0.index < $1.index })
             .reduce(into: pkDrawing.strokes) { $0.insert($1.stroke, at: min($1.index, $0.count)) })
-        let previousObjects = sculptObjects
+        // Pre-session snapshot: undoing a commit must also undo the session's
+        // orientation/scale writes, which land before this handler runs.
+        let previousObjects = preSessionObjects
+
+        // Only strokes that actually enter the canvas (the loop below drops
+        // degenerate single-point bakes) may form the object's new source
+        // identity — dangling IDs would defeat exact-match re-entry.
+        let insertedBaked = bakedStrokes.filter { $0.points.count > 1 }
 
         // Remove lifted source strokes from the model (their PK ink is already
         // hidden). Unlifted ones were never removed from pkDrawing's visible
@@ -356,14 +374,14 @@ struct DrawingScreen: View {
             }
             // Re-selection of "the shape" must match baked ink + carried-through
             // originals, so both sets form the object's new source identity.
-            sculptObjects[idx].sourceStrokeIDs = Set(bakedStrokes.map(\.id))
+            sculptObjects[idx].sourceStrokeIDs = Set(insertedBaked.map(\.id))
                 .union(unliftedSourceIDs)
             sculptObjects[idx].unliftedStrokeIDs = unliftedSourceIDs
         }
 
         // Insert the baked ink into both stores (kept parallel: both appended at the end).
         var newPKStrokes: [PKStroke] = []
-        for stroke in bakedStrokes where stroke.points.count > 1 {
+        for stroke in insertedBaked {
             vm.addStroke(stroke)
             newPKStrokes.append(StrokeConverter.toPKStroke(stroke))
         }
@@ -372,6 +390,7 @@ struct DrawingScreen: View {
         hiddenPKStrokes = []
         editSourceStrokes = []
         unliftedSourceIDs = []
+        preSessionObjects = []
         withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
 
         undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in

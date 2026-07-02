@@ -178,6 +178,15 @@ struct Edit25DOverlay: View {
                 SculptScreen(strokes: sourceStrokes, sculptObjects: $sculptObjects)
             }
         }
+        .onChange(of: sculptObjects) { _, newObjects in
+            // An undo of an earlier commit restores sculptObjects wholesale and
+            // can delete this session's object out from under it; bail out via
+            // the cancel path so the hidden ink is restored and edit mode
+            // exits cleanly instead of stranding the user in a dead session.
+            guard let id = activeObjectID, !isInferring,
+                  !newObjects.contains(where: { $0.id == id }) else { return }
+            onInferenceFailed()
+        }
         .onAppear(perform: startSession)
         .onDisappear { inferenceTask?.cancel() }
     }
