@@ -33,6 +33,7 @@ struct Edit25DOverlay: View {
     @State private var sessionOrientation = simd_quatf(vector: SIMD4(0, 0, 0, 1))
     @State private var sessionScale: Float = 1
     @State private var rendererCacheBVH: ((UUID, MeshBVH) -> Void)?
+    @State private var inferenceTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -165,6 +166,7 @@ struct Edit25DOverlay: View {
             if isDeformMode { isSmoothMode.toggle() } else { isEraseStrokeMode.toggle() }
         }
         .onAppear(perform: startSession)
+        .onDisappear { inferenceTask?.cancel() }
     }
 
     // MARK: - Session lifecycle
@@ -174,6 +176,9 @@ struct Edit25DOverlay: View {
     }
 
     private func startSession() {
+        // Idempotent: a spurious double onAppear must never double-infer
+        // or double-append.
+        guard activeObjectID == nil, !isInferring else { return }
         let strokeIDs = Set(sourceStrokes.map(\.id))
 
         if let exact = sculptObjects.first(where: { $0.sourceStrokeIDs == strokeIDs }) {
@@ -193,9 +198,10 @@ struct Edit25DOverlay: View {
         isInferring = true
         let strokes = sourceStrokes
         let cfg = config
-        Task.detached {
+        inferenceTask = Task.detached {
             let obj = ShapeInflater.sculpt(from: strokes, config: cfg)
             guard !obj.mesh.isEmpty else {
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     isInferring = false
                     onInferenceFailed()
@@ -205,6 +211,7 @@ struct Edit25DOverlay: View {
             let bvh = MeshBVH(mesh: obj.mesh)
             let lift = StrokeLifter.lift(strokes, bvh: bvh,
                                          offset: cfg.surfaceStrokeOffset)
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 var newObj = obj
                 newObj.surfaceStrokes = lift.lifted
@@ -233,6 +240,10 @@ struct Edit25DOverlay: View {
                                       scale: sessionScale,
                                       pivot: pivot(for: obj))
         onCommit(objectID, baked)
+        // Latch: disable the checkmark, unmount the MetalCanvasView (killing
+        // the tap-to-commit path), and fail the guard above on any re-entry —
+        // a double-tap during the exit fade must never commit twice.
+        activeObjectID = nil
     }
 
     private func handleSurfaceStroke(_ stroke: SurfaceStroke) {
