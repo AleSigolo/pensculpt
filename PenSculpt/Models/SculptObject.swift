@@ -114,6 +114,10 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     var mesh: Mesh
     var sourceStrokeIDs: Set<UUID>
+    /// Source stroke IDs that produced no surface segments the last time
+    /// `StrokeLifter.lift` ran (they stayed flat 2D ink). Persisted so a
+    /// re-entered edit session knows to keep reporting them un-hidden.
+    var unliftedStrokeIDs: Set<UUID>
     var surfaceStrokes: [SurfaceStroke]
     /// The 2D bounding rect of the source strokes in canvas coordinates.
     /// Used to map the 3D mesh back to its original position on the drawing canvas.
@@ -124,15 +128,17 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
     var scale: Float
 
     private enum CodingKeys: String, CodingKey {
-        case id, mesh, sourceStrokeIDs, surfaceStrokes, originRect, orientation, scale
+        case id, mesh, sourceStrokeIDs, unliftedStrokeIDs, surfaceStrokes, originRect, orientation, scale
     }
 
     init(id: UUID = UUID(), mesh: Mesh, sourceStrokeIDs: Set<UUID>,
+         unliftedStrokeIDs: Set<UUID> = [],
          surfaceStrokes: [SurfaceStroke] = [], originRect: CGRect = .zero,
          orientation: simd_quatf = simd_quatf(vector: SIMD4(0, 0, 0, 1)), scale: Float = 1) {
         self.id = id
         self.mesh = mesh
         self.sourceStrokeIDs = sourceStrokeIDs
+        self.unliftedStrokeIDs = unliftedStrokeIDs
         self.surfaceStrokes = surfaceStrokes
         self.originRect = originRect
         self.orientation = orientation
@@ -144,6 +150,7 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
         id = try container.decode(UUID.self, forKey: .id)
         mesh = try container.decode(Mesh.self, forKey: .mesh)
         sourceStrokeIDs = try container.decode(Set<UUID>.self, forKey: .sourceStrokeIDs)
+        unliftedStrokeIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .unliftedStrokeIDs) ?? []
         surfaceStrokes = try container.decodeIfPresent([SurfaceStroke].self, forKey: .surfaceStrokes) ?? []
         originRect = try container.decodeIfPresent(CGRect.self, forKey: .originRect) ?? .zero
         let ov = try container.decodeIfPresent(SIMD4<Float>.self, forKey: .orientation)
@@ -162,6 +169,7 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(mesh, forKey: .mesh)
         try container.encode(sourceStrokeIDs, forKey: .sourceStrokeIDs)
+        try container.encode(unliftedStrokeIDs, forKey: .unliftedStrokeIDs)
         try container.encode(surfaceStrokes, forKey: .surfaceStrokes)
         try container.encode(originRect, forKey: .originRect)
         try container.encode(orientation.vector, forKey: .orientation)

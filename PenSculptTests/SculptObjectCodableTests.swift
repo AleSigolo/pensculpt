@@ -23,6 +23,27 @@ final class SculptObjectCodableTests: XCTestCase {
         XCTAssertEqual(decoded.scale, 1.5)
     }
 
+    func testUnliftedStrokeIDsDefaultsEmptyAndRoundTrips() throws {
+        let ids: Set<UUID> = [UUID(), UUID()]
+        var obj = SculptObject(mesh: Mesh(), sourceStrokeIDs: [])
+        XCTAssertTrue(obj.unliftedStrokeIDs.isEmpty)
+
+        obj.unliftedStrokeIDs = ids
+        let data = try JSONEncoder().encode(obj)
+        let decoded = try JSONDecoder().decode(SculptObject.self, from: data)
+        XCTAssertEqual(decoded.unliftedStrokeIDs, ids)
+    }
+
+    func testLegacyJSONWithoutUnliftedStrokeIDsDecodesToEmptySet() throws {
+        // Simulates a document written before unliftedStrokeIDs existed.
+        let legacy = """
+        {"id":"\(UUID().uuidString)","mesh":{"vertices":[],"faces":[]},
+         "sourceStrokeIDs":[],"surfaceStrokes":[]}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(SculptObject.self, from: legacy)
+        XCTAssertTrue(decoded.unliftedStrokeIDs.isEmpty)
+    }
+
     func testLegacyJSONWithoutNewFieldsDecodes() throws {
         // Simulates a pre-2.5D document: no orientation, scale, or stroke color.
         let legacy = """
