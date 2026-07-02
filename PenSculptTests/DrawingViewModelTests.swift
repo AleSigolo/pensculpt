@@ -343,4 +343,17 @@ final class EditSessionParityTests: XCTestCase {
         let restored = restore(unlifted: [1], stillHidden: [3], into: ["p0", "p2", "p4"])
         XCTAssertEqual(restored, ["p0", "p1", "p2", "p4"])
     }
+
+    func testParityIndexLocatesSessionStrokeForUndoRemoval() {
+        // handleEditCanvasStroke's undo closure reuses the same formula as a
+        // REMOVAL index. Mid-session, canvas holds [s0, s1(hidden), s2,
+        // s3(hidden), s4, session] while pkDrawing holds [p0, p2, p4,
+        // pSession]: canvas index 5 must map to pk index 3 — the appended
+        // session stroke, not an innocent neighbour.
+        XCTAssertEqual(DrawingScreen.parityInsertionIndex(originalIndex: 5,
+                                                          stillHiddenOriginalIndices: [1, 3]), 3)
+        // Post-session (nothing hidden) the stores are parallel again: 1:1.
+        XCTAssertEqual(DrawingScreen.parityInsertionIndex(originalIndex: 5,
+                                                          stillHiddenOriginalIndices: []), 5)
+    }
 }

@@ -231,6 +231,14 @@ struct DrawingScreen: View {
     private func addStrokeWithUndo(_ stroke: Stroke) {
         vm.addStroke(stroke)
         undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
+            // Mid-session, pkDrawing intentionally lacks the hidden (lifted)
+            // ink, so positional closures registered in draw mode must not
+            // fire: dropLast would remove the WRONG PK stroke and corrupt
+            // canvas/pkDrawing parity for good. The undo action is consumed
+            // as a no-op (acceptable — session-scoped closures like
+            // handleEditCanvasStroke's remain valid because session strokes
+            // stay parallel in both stores).
+            guard vm.appMode != .edit else { return }
             vm.removeStroke(id: stroke.id)
             pkDrawing = PKDrawing(strokes: pkDrawing.strokes.dropLast())
         }
@@ -242,6 +250,11 @@ struct DrawingScreen: View {
             let stroke = vm.canvas.strokes[index]
             vm.removeStroke(id: stroke.id)
             undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
+                // Mid-session, pkDrawing intentionally lacks the hidden
+                // (lifted) ink, so draw-mode closures must not fire: re-adding
+                // canvas ink here (its PK side is restored separately) would
+                // desync the stores. Consumed as a no-op.
+                guard vm.appMode != .edit else { return }
                 vm.addStroke(stroke)
             }
         }
@@ -363,8 +376,20 @@ struct DrawingScreen: View {
         vm.addStroke(stroke)
         pkDrawing = PKDrawing(strokes: pkDrawing.strokes + [StrokeConverter.toPKStroke(stroke)])
         undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
+            // Session-scoped, but a blind dropLast would still be wrong once:
+            // undoing an EARLIER commit restores canvas/pkDrawing wholesale
+            // and can wipe this stroke while this registration is still
+            // stacked — a later fire would then dropLast an innocent stroke.
+            // So: no-op if the stroke is gone, and remove the PK stroke at
+            // the parity index of the stroke's canvas position (mid-session,
+            // still-hidden lifted ink offsets it; post-session it's 1:1).
+            guard let canvasIdx = vm.canvas.strokes.firstIndex(where: { $0.id == stroke.id }) else { return }
+            let pkIdx = Self.parityInsertionIndex(originalIndex: canvasIdx,
+                                                  stillHiddenOriginalIndices: hiddenPKStrokes.map(\.index))
             vm.removeStroke(id: stroke.id)
-            pkDrawing = PKDrawing(strokes: pkDrawing.strokes.dropLast())
+            var strokes = pkDrawing.strokes
+            if pkIdx < strokes.count { strokes.remove(at: pkIdx) }
+            pkDrawing = PKDrawing(strokes: strokes)
         }
     }
 
