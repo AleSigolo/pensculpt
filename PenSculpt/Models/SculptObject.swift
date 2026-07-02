@@ -78,7 +78,7 @@ extension SurfaceStroke {
     /// the viewer-facing sheet of a ShapeInflater mesh (winding normal −z).
     /// The hit point is nudged back against the ray (toward the viewer) by
     /// `offset` so strokes render on top of the surface.
-    static func castOntoMesh(from origin: SIMD3<Float>, direction: SIMD3<Float>,
+    private static func castOntoMesh(from origin: SIMD3<Float>, direction: SIMD3<Float>,
                               mesh: Mesh, offset: Float) -> (SIMD3<Float>, Float)? {
         var closestT: Float = Float.infinity
         var hitPoint: SIMD3<Float>?
