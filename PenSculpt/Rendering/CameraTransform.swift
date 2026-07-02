@@ -47,14 +47,17 @@ struct CameraTransform: Equatable {
     }
 
     /// Unprojects a screen point into a world-space picking ray. The origin sits
-    /// on the near plane (z_ndc = +1, in front of the scene) so smallest hit t
-    /// is nearest the viewer — same convention as SculptRenderer.hitTest.
+    /// on the near plane (NDC z = 0, the viewer side at world z = +depthRange)
+    /// and the ray travels −z through the scene, so smallest hit t is nearest
+    /// the viewer — same convention as SculptRenderer.hitTest, and the winding
+    /// MeshBVH.raycast's `a < -1e-6` cull accepts is the viewer-facing sheet
+    /// of a ShapeInflater mesh (geometric winding normal −z).
     func ray(from screenPoint: CGPoint) -> (origin: SIMD3<Float>, direction: SIMD3<Float>) {
         let inv = mvpMatrix.inverse
         let ndcX = Float(2 * screenPoint.x / viewSize.width - 1)
         let ndcY = Float(1 - 2 * screenPoint.y / viewSize.height)
-        let o4 = inv * SIMD4<Float>(ndcX, ndcY, 1, 1)
-        let t4 = inv * SIMD4<Float>(ndcX, ndcY, -1, 1)
+        let o4 = inv * SIMD4<Float>(ndcX, ndcY, 0, 1)
+        let t4 = inv * SIMD4<Float>(ndcX, ndcY, 1, 1)
         let o = SIMD3(o4.x, o4.y, o4.z) / o4.w
         let t = SIMD3(t4.x, t4.y, t4.z) / t4.w
         return (o, normalize(t - o))
@@ -68,14 +71,21 @@ struct CameraTransform: Equatable {
 
     // MARK: - Matrix builders
 
+    /// Orthographic projection with glOrtho parameter semantics but Metal's
+    /// clip volume: the viewer looks down −z, `near`/`far` are signed distances
+    /// along the view direction, and view-space z ∈ [−near, −far] maps to
+    /// depth [0, 1] (Metal clips z_ndc to [0, 1], NOT OpenGL's [−1, +1]).
+    /// With the usual call near = −R, far = +R this makes the whole slab
+    /// z ∈ [−R, +R] visible and puts larger world z NEARER the viewer
+    /// (viewer at +z) — verified on the GPU by MetalConventionTests.
     static func orthographic(left: Float, right: Float, bottom: Float, top: Float,
                              near: Float, far: Float) -> simd_float4x4 {
         let sx = 2.0 / (right - left)
         let sy = 2.0 / (top - bottom)
-        let sz = -2.0 / (far - near)
+        let sz = -1.0 / (far - near)
         let tx = -(right + left) / (right - left)
         let ty = -(top + bottom) / (top - bottom)
-        let tz = -(far + near) / (far - near)
+        let tz = -near / (far - near)
         return simd_float4x4(columns: (
             SIMD4<Float>(sx, 0, 0, 0),
             SIMD4<Float>(0, sy, 0, 0),

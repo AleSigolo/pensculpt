@@ -45,16 +45,51 @@ final class CameraTransformTests: XCTestCase {
     }
 
     func testRayFromScreenPointAtIdentity() {
-        // Must reproduce SculptRenderer.hitTest's convention: rays travel +z
-        // (NDC z +1 → −1), which is what MeshBVH's `a < -1e-6` cull expects.
+        // Must reproduce SculptRenderer.hitTest's convention: the origin is on
+        // the viewer side (world z = +depthRange, NDC z = 0) and rays travel −z
+        // into the scene — the winding MeshBVH's `a < -1e-6` cull accepts is
+        // then the viewer-facing sheet of a ShapeInflater mesh.
         let cam = makeCam()
         let ray = cam.ray(from: CGPoint(x: 123, y: 456))
         XCTAssertEqual(ray.origin.x, 123, accuracy: 0.01)
         XCTAssertEqual(ray.origin.y, -456, accuracy: 0.01)
-        XCTAssertEqual(ray.origin.z, -4096, accuracy: 0.5)
+        XCTAssertEqual(ray.origin.z, 4096, accuracy: 0.5)
         XCTAssertEqual(ray.direction.x, 0, accuracy: 1e-4)
         XCTAssertEqual(ray.direction.y, 0, accuracy: 1e-4)
-        XCTAssertEqual(ray.direction.z, 1, accuracy: 1e-4)
+        XCTAssertEqual(ray.direction.z, -1, accuracy: 1e-4)
+    }
+
+    func testRayRoundTripsThroughWorldPointUnderRotationAndScale() {
+        // For any world/object-space point p, the picking ray cast at
+        // worldToScreen(p) must pass through p itself — this is what makes
+        // pick-then-draw land exactly under the pen for a rotated object.
+        let cam = makeCam(orientation: simd_quatf(angle: 0.9, axis: normalize(SIMD3<Float>(1, 2, 0.5))),
+                          scale: 1.7)
+        let p = SIMD3<Float>(560, -420, 30)
+        let ray = cam.ray(from: cam.worldToScreen(p))
+        let toP = p - ray.origin
+        // Distance from p to the ray line is ~0, and p lies ahead of the origin.
+        let distance = length(cross(toP, ray.direction))
+        XCTAssertEqual(distance, 0, accuracy: 0.05)
+        XCTAssertGreaterThan(dot(toP, ray.direction), 0,
+                             "Ray origin must be on the viewer side of the scene")
+    }
+
+    func testPositiveWorldZIsInsideMetalClipVolume() {
+        // Regression for the OpenGL-convention ortho matrix: Metal clips NDC z
+        // to [0, 1] (not [−1, +1]), so lifted/rotated geometry at world z > 0
+        // must stay inside [0, 1] — and be NEARER (smaller depth) than z < 0.
+        let proj = makeCam().projectionMatrix
+        let front = proj * SIMD4<Float>(500, -400, 4000, 1)
+        let back = proj * SIMD4<Float>(500, -400, -4000, 1)
+        let frontDepth = front.z / front.w
+        let backDepth = back.z / back.w
+        XCTAssertGreaterThanOrEqual(frontDepth, 0)
+        XCTAssertLessThanOrEqual(frontDepth, 1)
+        XCTAssertGreaterThanOrEqual(backDepth, 0)
+        XCTAssertLessThanOrEqual(backDepth, 1)
+        XCTAssertLessThan(frontDepth, backDepth,
+                          "Larger world z must be nearer the viewer (smaller depth)")
     }
 
     func testModelTransformedMatchesWorldToScreen() {

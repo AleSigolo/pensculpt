@@ -179,7 +179,12 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         encoder.setRenderPipelineState(meshPipeline)
         encoder.setDepthStencilState(meshDepthState)
         encoder.setCullMode(.back)
-        encoder.setFrontFacing(.counterClockwise)
+        // ShapeInflater winds the viewer-facing sheet (z = +d, shading normal
+        // +z) with geometric winding normal −z, which Metal rasterizes as
+        // CLOCKWISE under our y-up projection. Front-facing must therefore be
+        // .clockwise so the surface the user sees survives the cull — verified
+        // by GPU readback in MetalConventionTests.
+        encoder.setFrontFacing(.clockwise)
 
         if config.displayMode == "wireframe" {
             encoder.setTriangleFillMode(.lines)
@@ -349,18 +354,20 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         let ndcX = Float(2 * screenPoint.x / viewSize.width - 1)
         let ndcY = Float(1 - 2 * screenPoint.y / viewSize.height)
 
-        // z_ndc +1 maps to the scene side (in front of camera) due to the
-        // orthographic projection's z-flip. Starting the ray here makes
-        // smallest t = nearest to viewer.
-        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
-        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, -1, 1)
+        // NDC z = 0 is the near plane (viewer side); the ray travels through
+        // the scene toward NDC z = 1. Starting the ray on the viewer side
+        // makes smallest t = nearest to viewer.
+        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 0, 1)
+        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
         let origin = SIMD3<Float>(origin4.x, origin4.y, origin4.z) / origin4.w
         let target = SIMD3<Float>(target4.x, target4.y, target4.z) / target4.w
         let direction = normalize(target - origin)
 
         guard let bvh = bvhCache[activeID] else { return nil }
         guard let result = bvh.raycast(origin: origin, direction: direction) else { return nil }
-        let hitPoint = origin + result.t * direction + direction * config.surfaceStrokeOffset
+        // Offset the hit point back toward the viewer (against the ray) so the
+        // stroke passes the .lessEqual depth test on top of the surface.
+        let hitPoint = origin + result.t * direction - direction * config.surfaceStrokeOffset
         return (hitPoint, result.t)
     }
 
@@ -505,11 +512,11 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         guard moveDirLen > 0.001 else { return }
         let worldDir = moveDir / moveDirLen
 
-        // Ray cast to find the deformation center
+        // Ray cast to find the deformation center (viewer side NDC z=0 → scene NDC z=1)
         let ndcX = Float(2 * screenPoint.x / viewSize.width - 1)
         let ndcY = Float(1 - 2 * screenPoint.y / viewSize.height)
-        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
-        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, -1, 1)
+        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 0, 1)
+        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
         let origin = SIMD3<Float>(origin4.x, origin4.y, origin4.z) / origin4.w
         let target = SIMD3<Float>(target4.x, target4.y, target4.z) / target4.w
         let direction = normalize(target - origin)
@@ -594,8 +601,8 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
         let ndcX = Float(2 * screenPoint.x / viewSize.width - 1)
         let ndcY = Float(1 - 2 * screenPoint.y / viewSize.height)
-        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
-        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, -1, 1)
+        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 0, 1)
+        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
         let origin = SIMD3<Float>(origin4.x, origin4.y, origin4.z) / origin4.w
         let target = SIMD3<Float>(target4.x, target4.y, target4.z) / target4.w
         let direction = normalize(target - origin)

@@ -63,8 +63,9 @@ final class SculptObjectCodableTests: XCTestCase {
     }
 
     func testReprojectedPreservesColorAndOpacity() throws {
-        // One quad at z=0 wound so its geometric normal points +z, which is the
-        // side castOntoMesh hits for a ray direction of (0, 0, -1).
+        // One quad at z=0 wound so its geometric winding normal points −z —
+        // the viewer-facing winding (ShapeInflater front-sheet convention)
+        // that castOntoMesh's `a < -1e-6` cull hits for a −z ray from above.
         let normal = SIMD3<Float>(0, 0, 1)
         let mesh = Mesh(
             vertices: [
@@ -73,7 +74,7 @@ final class SculptObjectCodableTests: XCTestCase {
                 MeshVertex(position: SIMD3(100, -100, 0), normal: normal),
                 MeshVertex(position: SIMD3(0, -100, 0), normal: normal),
             ],
-            faces: [MeshFace(indices: SIMD3(0, 2, 1)), MeshFace(indices: SIMD3(0, 3, 2))]
+            faces: [MeshFace(indices: SIMD3(0, 1, 2)), MeshFace(indices: SIMD3(0, 2, 3))]
         )
         let red = CodableColor(red: 1, green: 0, blue: 0, alpha: 1)
         let stroke = SurfaceStroke(points: [SIMD3(30, -10, 10), SIMD3(60, -20, 10)],

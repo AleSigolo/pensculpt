@@ -146,8 +146,11 @@ struct MeshBVH {
     }
 
     // MARK: - Ray-triangle (Moller-Trumbore, camera-facing)
-    // The ray points from the scene side toward the camera, so camera-facing
-    // triangles have a < 0 (their normal opposes the ray in the Moller-Trumbore sense).
+    // Picking rays start on the viewer side and travel INTO the scene
+    // (direction −z at identity). `a < -1e-6` accepts faces whose geometric
+    // winding normal points along the ray — for ShapeInflater meshes that is
+    // the viewer-facing sheet (winding normal −z, shading normal +z), i.e.
+    // the surface the user actually sees. Same cull as SurfaceStroke.castOntoMesh.
 
     private static func rayTriangleIntersect(origin: SIMD3<Float>, direction: SIMD3<Float>,
                                               v0: SIMD3<Float>, v1: SIMD3<Float>, v2: SIMD3<Float>) -> Float? {

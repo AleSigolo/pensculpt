@@ -72,6 +72,12 @@ extension SurfaceStroke {
                              opacity: opacity, color: color)
     }
 
+    /// Möller–Trumbore cast accepting only faces whose geometric winding
+    /// normal points ALONG the ray (`a < -1e-6`) — the same cull as
+    /// `MeshBVH.rayTriangleIntersect`, so a −z ray from the viewer side hits
+    /// the viewer-facing sheet of a ShapeInflater mesh (winding normal −z).
+    /// The hit point is nudged back against the ray (toward the viewer) by
+    /// `offset` so strokes render on top of the surface.
     private static func castOntoMesh(from origin: SIMD3<Float>, direction: SIMD3<Float>,
                                       mesh: Mesh, offset: Float) -> (SIMD3<Float>, Float)? {
         var closestT: Float = Float.infinity
@@ -85,7 +91,7 @@ extension SurfaceStroke {
             let edge1 = v1 - v0, edge2 = v2 - v0
             let h = cross(direction, edge2)
             let a = dot(edge1, h)
-            guard a > 1e-6 else { continue }
+            guard a < -1e-6 else { continue }
             let f = 1.0 / a
             let s = origin - v0
             let u = f * dot(s, h)
