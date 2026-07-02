@@ -60,7 +60,10 @@ final class MeshTests: XCTestCase {
 
 final class MeshBVHTests: XCTestCase {
 
-    /// Brute-force ray cast for comparison (camera-facing, matching BVH).
+    /// Brute-force ray cast for comparison. Uses the same `a < -1e-6` cull as
+    /// MeshBVH.rayTriangleIntersect: only faces whose geometric winding normal
+    /// points ALONG the ray are hit (for a −z picking ray, the viewer-facing
+    /// sheet of a ShapeInflater mesh).
     private func bruteForceRaycast(mesh: Mesh, origin: SIMD3<Float>, direction: SIMD3<Float>) -> (t: Float, faceIndex: Int)? {
         var closestT: Float = Float.infinity
         var hitFace = -1
@@ -86,55 +89,55 @@ final class MeshBVHTests: XCTestCase {
         return hitFace >= 0 ? (closestT, hitFace) : nil
     }
 
-    /// Two parallel quads at z=5 and z=0. Ray from z=-10 going in +z hits z=0 first.
-    /// (Ray goes from scene side toward camera; a < -1e-6 selects camera-facing triangles.)
-    func testBVHReturnsNearestSurface() {
-        // Two quads with CW winding from +z (normals in -z, camera-facing for +z ray)
+    /// Two parallel quads at z=5 and z=0, both wound with geometric winding
+    /// normal −z (the real ShapeInflater viewer-facing convention). A picking
+    /// ray from the viewer side (+z) travelling −z must hit the NEARER quad
+    /// (z=5) — `a < -1e-6` accepts exactly these viewer-facing triangles.
+    func testBVHReturnsNearestSurface() throws {
         let vertices = [
-            MeshVertex(position: SIMD3(-1, -1, 5), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3( 1, -1, 5), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3( 1,  1, 5), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3(-1,  1, 5), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3(-1, -1, 0), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3( 1, -1, 0), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3( 1,  1, 0), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3(-1,  1, 0), normal: SIMD3(0, 0, -1)),
+            MeshVertex(position: SIMD3(-1, -1, 5), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3( 1, -1, 5), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3( 1,  1, 5), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3(-1,  1, 5), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3(-1, -1, 0), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3( 1, -1, 0), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3( 1,  1, 0), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3(-1,  1, 0), normal: SIMD3(0, 0, 1)),
         ]
         let faces = [
-            // CW from +z → normals in -z → a < 0 for +z ray → accepted
+            // Winding normal −z → a < -1e-6 for a −z ray → accepted
             MeshFace(indices: SIMD3(0, 2, 1)), MeshFace(indices: SIMD3(0, 3, 2)),
             MeshFace(indices: SIMD3(4, 6, 5)), MeshFace(indices: SIMD3(4, 7, 6)),
         ]
         let mesh = Mesh(vertices: vertices, faces: faces)
         let bvh = MeshBVH(mesh: mesh)
 
-        let origin = SIMD3<Float>(0, 0, -10)
-        let direction = SIMD3<Float>(0, 0, 1)
+        let origin = SIMD3<Float>(0, 0, 10)
+        let direction = SIMD3<Float>(0, 0, -1)
 
-        let bvhResult = bvh.raycast(origin: origin, direction: direction)
-        let bruteResult = bruteForceRaycast(mesh: mesh, origin: origin, direction: direction)
+        let bvhResult = try XCTUnwrap(bvh.raycast(origin: origin, direction: direction))
+        let bruteResult = try XCTUnwrap(bruteForceRaycast(mesh: mesh, origin: origin, direction: direction))
 
-        XCTAssertNotNil(bvhResult)
-        XCTAssertNotNil(bruteResult)
-        XCTAssertEqual(bvhResult!.t, bruteResult!.t, accuracy: 1e-4)
-        // Nearest quad from origin is at z=0 → t=10
-        XCTAssertEqual(bvhResult!.t, 10.0, accuracy: 1e-4,
-                       "Should hit nearest surface at z=0, got t=\(bvhResult!.t)")
+        XCTAssertEqual(bvhResult.t, bruteResult.t, accuracy: 1e-4)
+        // Nearest quad to the viewer at z=10 is z=5 → t=5
+        XCTAssertEqual(bvhResult.t, 5.0, accuracy: 1e-4,
+                       "Should hit nearest surface at z=5, got t=\(bvhResult.t)")
     }
 
-    /// Many overlapping layers — BVH must still find the closest.
-    func testBVHWithManyOverlappingLayers() {
+    /// Many overlapping layers — BVH must still find the closest to the viewer.
+    func testBVHWithManyOverlappingLayers() throws {
         var vertices: [MeshVertex] = []
         var faces: [MeshFace] = []
-        // Create 10 quads at z = 0..9 with CW winding (camera-facing for +z ray)
+        // Create 10 quads at z = 0..9 wound with winding normal −z
+        // (viewer-facing for the conventional −z picking ray)
         for layer in 0..<10 {
             let z = Float(layer)
             let base = UInt32(layer * 4)
             vertices.append(contentsOf: [
-                MeshVertex(position: SIMD3(-1, -1, z), normal: SIMD3(0, 0, -1)),
-                MeshVertex(position: SIMD3( 1, -1, z), normal: SIMD3(0, 0, -1)),
-                MeshVertex(position: SIMD3( 1,  1, z), normal: SIMD3(0, 0, -1)),
-                MeshVertex(position: SIMD3(-1,  1, z), normal: SIMD3(0, 0, -1)),
+                MeshVertex(position: SIMD3(-1, -1, z), normal: SIMD3(0, 0, 1)),
+                MeshVertex(position: SIMD3( 1, -1, z), normal: SIMD3(0, 0, 1)),
+                MeshVertex(position: SIMD3( 1,  1, z), normal: SIMD3(0, 0, 1)),
+                MeshVertex(position: SIMD3(-1,  1, z), normal: SIMD3(0, 0, 1)),
             ])
             faces.append(MeshFace(indices: SIMD3(base, base+2, base+1)))
             faces.append(MeshFace(indices: SIMD3(base, base+3, base+2)))
@@ -142,45 +145,43 @@ final class MeshBVHTests: XCTestCase {
         let mesh = Mesh(vertices: vertices, faces: faces)
         let bvh = MeshBVH(mesh: mesh)
 
-        let origin = SIMD3<Float>(0, 0, -10)
-        let direction = SIMD3<Float>(0, 0, 1)
+        let origin = SIMD3<Float>(0, 0, 20)
+        let direction = SIMD3<Float>(0, 0, -1)
 
-        let bvhResult = bvh.raycast(origin: origin, direction: direction)
-        let bruteResult = bruteForceRaycast(mesh: mesh, origin: origin, direction: direction)
+        let bvhResult = try XCTUnwrap(bvh.raycast(origin: origin, direction: direction))
+        let bruteResult = try XCTUnwrap(bruteForceRaycast(mesh: mesh, origin: origin, direction: direction))
 
-        XCTAssertNotNil(bvhResult)
-        XCTAssertNotNil(bruteResult)
-        // Nearest layer is at z=0, so t should be 10
-        XCTAssertEqual(bvhResult!.t, 10.0, accuracy: 1e-4,
-                       "Should hit nearest layer at z=0, got t=\(bvhResult!.t)")
-        XCTAssertEqual(bvhResult!.t, bruteResult!.t, accuracy: 1e-4)
+        // Nearest layer to the viewer at z=20 is z=9, so t should be 11
+        XCTAssertEqual(bvhResult.t, 11.0, accuracy: 1e-4,
+                       "Should hit nearest layer at z=9, got t=\(bvhResult.t)")
+        XCTAssertEqual(bvhResult.t, bruteResult.t, accuracy: 1e-4)
     }
 
     /// Reproduce the exact hitTest math using ShapeInflater's actual winding convention.
-    /// ShapeInflater front faces: (tl, tr, bl) which produces normals in -z.
-    /// This means front surface is BACK-FACING relative to the ray direction (0,0,-1).
-    /// With abs(a) > 1e-6, the ray should still hit the nearest surface.
-    func testHitTestWithShapeInflaterWinding() {
-        // Replicate ShapeInflater winding:
-        // Front face at z=+5: indices (tl, tr, bl) → normal in -z (back-facing to camera ray)
-        // Back face at z=-5: indices (tlB, blB, trB) → normal in +z (front-facing to camera ray)
+    /// ShapeInflater front faces (tl, tr, bl)/(tr, br, bl) have GEOMETRIC winding
+    /// normal −z (shading normal +z) — that is the viewer-facing sheet, and the
+    /// `a < -1e-6` cull accepts it for a picking ray travelling −z.
+    /// tl/tr/bl/br refer to CANVAS orientation (world y = −canvas y), exactly
+    /// like ShapeInflater.buildMesh and the MetalConventionTests pillow fixture.
+    func testHitTestWithShapeInflaterWinding() throws {
         let vertices = [
-            // Front quad at z=+5 — large enough to always be hit
-            MeshVertex(position: SIMD3(-50, -50, 5), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3( 50, -50, 5), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3(-50,  50, 5), normal: SIMD3(0, 0, -1)),
-            MeshVertex(position: SIMD3( 50,  50, 5), normal: SIMD3(0, 0, -1)),
-            // Back quad at z=-5
-            MeshVertex(position: SIMD3(-50, -50, -5), normal: SIMD3(0, 0, 1)),
-            MeshVertex(position: SIMD3( 50, -50, -5), normal: SIMD3(0, 0, 1)),
-            MeshVertex(position: SIMD3(-50,  50, -5), normal: SIMD3(0, 0, 1)),
-            MeshVertex(position: SIMD3( 50,  50, -5), normal: SIMD3(0, 0, 1)),
+            // Front (viewer-facing) sheet at z=+5, shading normals +z —
+            // large enough to always be hit
+            MeshVertex(position: SIMD3(-50,  50, 5), normal: SIMD3(0, 0, 1)),  // 0 tl
+            MeshVertex(position: SIMD3( 50,  50, 5), normal: SIMD3(0, 0, 1)),  // 1 tr
+            MeshVertex(position: SIMD3(-50, -50, 5), normal: SIMD3(0, 0, 1)),  // 2 bl
+            MeshVertex(position: SIMD3( 50, -50, 5), normal: SIMD3(0, 0, 1)),  // 3 br
+            // Back sheet at z=-5, shading normals −z
+            MeshVertex(position: SIMD3(-50,  50, -5), normal: SIMD3(0, 0, -1)), // 4 tlB
+            MeshVertex(position: SIMD3( 50,  50, -5), normal: SIMD3(0, 0, -1)), // 5 trB
+            MeshVertex(position: SIMD3(-50, -50, -5), normal: SIMD3(0, 0, -1)), // 6 blB
+            MeshVertex(position: SIMD3( 50, -50, -5), normal: SIMD3(0, 0, -1)), // 7 brB
         ]
         let faces = [
-            // Front face winding: (tl, tr, bl) and (tr, br, bl) — ShapeInflater convention
+            // Front winding: (tl, tr, bl), (tr, br, bl) → geometric winding normal −z
             MeshFace(indices: SIMD3(0, 1, 2)),
             MeshFace(indices: SIMD3(1, 3, 2)),
-            // Back face winding: (tlB, blB, trB) and (trB, blB, brB) — ShapeInflater convention
+            // Back winding: (tlB, blB, trB), (trB, blB, brB) → geometric winding normal +z
             MeshFace(indices: SIMD3(4, 6, 5)),
             MeshFace(indices: SIMD3(5, 6, 7)),
         ]
@@ -208,24 +209,24 @@ final class MeshBVHTests: XCTestCase {
         let mvp = proj * view
         let invMVP = mvp.inverse
 
-        // Ray from scene side (z_ndc=+1) toward behind-camera (z_ndc=-1),
-        // matching the simplified SculptRenderer hitTest.
+        // Unproject NDC z 0 → 1 exactly like SculptRenderer.unprojectRay:
+        // origin on the viewer side, ray travelling into the scene.
         let ndcX = Float(2 * 512.0 / viewSize.width - 1)
         let ndcY = Float(1 - 2 * 512.0 / viewSize.height)
-        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
-        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, -1, 1)
+        let origin4 = invMVP * SIMD4<Float>(ndcX, ndcY, 0, 1)
+        let target4 = invMVP * SIMD4<Float>(ndcX, ndcY, 1, 1)
         let origin = SIMD3<Float>(origin4.x, origin4.y, origin4.z) / origin4.w
         let target = SIMD3<Float>(target4.x, target4.y, target4.z) / target4.w
         let direction = normalize(target - origin)
 
         let bvh = MeshBVH(mesh: mesh)
-        let result = bvh.raycast(origin: origin, direction: direction)
-        XCTAssertNotNil(result, "Should hit the visible surface")
-        let hitPoint = origin + result!.t * direction
-        // The camera-facing (visible) surface is at z=-5.
-        // With origin on the scene side, smallest t = nearest to viewer.
-        XCTAssertEqual(hitPoint.z, -5.0, accuracy: 0.1,
-            "Should hit visible surface at z=-5, got z=\(hitPoint.z)")
+        let result = try XCTUnwrap(bvh.raycast(origin: origin, direction: direction),
+                                   "Should hit the visible surface")
+        let hitPoint = origin + result.t * direction
+        // The viewer-facing (visible) surface is at z=+5.
+        // With origin on the viewer side, smallest t = nearest to viewer.
+        XCTAssertEqual(hitPoint.z, 5.0, accuracy: 0.1,
+            "Should hit visible surface at z=+5, got z=\(hitPoint.z)")
     }
 
     /// Exhaustive comparison: cast many rays and verify BVH matches brute force.
@@ -252,7 +253,7 @@ final class MeshBVHTests: XCTestCase {
                 vertices.append(MeshVertex(position: SIMD3(fx, fy, Float(z)), normal: SIMD3(0, 0, -1)))
             }
         }
-        // Front surface faces (CW from +z → normals in -z → camera-facing for +z ray)
+        // Front surface faces (winding normal −z → viewer-facing for a −z ray)
         let n = gridSize
         for y in 0..<(n-1) {
             for x in 0..<(n-1) {
@@ -261,7 +262,7 @@ final class MeshBVHTests: XCTestCase {
                 faces.append(MeshFace(indices: SIMD3(i, i+UInt32(n), i+UInt32(n)+1)))
             }
         }
-        // Back surface faces (CW from -z → normals in +z → NOT camera-facing for +z ray)
+        // Back surface faces (winding normal +z → culled for a −z ray)
         let offset = UInt32(n * n)
         for y in 0..<(n-1) {
             for x in 0..<(n-1) {
@@ -273,13 +274,13 @@ final class MeshBVHTests: XCTestCase {
 
         let mesh = Mesh(vertices: vertices, faces: faces)
         let bvh = MeshBVH(mesh: mesh)
-        let direction = SIMD3<Float>(0, 0, 1)
+        let direction = SIMD3<Float>(0, 0, -1)
         var mismatches = 0
 
-        // Cast rays across a grid (from scene side, going toward +z)
+        // Cast rays across a grid (from the viewer side at +z, travelling −z)
         for sy in stride(from: -4.0, through: 4.0, by: 0.5) {
             for sx in stride(from: -4.0, through: 4.0, by: 0.5) {
-                let origin = SIMD3<Float>(Float(sx), Float(sy), -20)
+                let origin = SIMD3<Float>(Float(sx), Float(sy), 20)
                 let bvhResult = bvh.raycast(origin: origin, direction: direction)
                 let bruteResult = bruteForceRaycast(mesh: mesh, origin: origin, direction: direction)
 
