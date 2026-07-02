@@ -65,24 +65,6 @@ final class SculptObjectCodableTests: XCTestCase {
         XCTAssertEqual(stroke.color, .black)
     }
 
-    func testProjectTo2DUsesStrokeColor() {
-        let red = CodableColor(red: 1, green: 0, blue: 0, alpha: 1)
-        let stroke = SurfaceStroke(points: [SIMD3(10, -20, 5), SIMD3(30, -40, 5)],
-                                   widths: [4, 4], color: red)
-        let flat = stroke.projectTo2D()
-        XCTAssertEqual(flat.color, red)
-        XCTAssertEqual(flat.points[0].location, CGPoint(x: 10, y: 20))
-    }
-
-    func testProjectTo2DMultipliesColorAlphaByOpacity() {
-        let stroke = SurfaceStroke(points: [SIMD3(10, -20, 5), SIMD3(30, -40, 5)],
-                                   widths: [4, 4], opacity: 0.5,
-                                   color: CodableColor(red: 1, green: 0, blue: 0, alpha: 0.8))
-        let flat = stroke.projectTo2D()
-        XCTAssertEqual(flat.color.red, 1)
-        XCTAssertEqual(Float(flat.color.alpha), 0.8 * 0.5, accuracy: 1e-6)
-    }
-
     func testReprojectedPreservesColorAndOpacity() throws {
         // One quad at z=0 wound so its geometric winding normal points −z —
         // the viewer-facing winding (ShapeInflater front-sheet convention)

@@ -5,12 +5,13 @@
 PenSculpt is an iPad drawing app for Apple Pencil that lets users draw in 2D and then "sculpt" their drawings into pseudo-3D objects. Development is staged:
 
 - **Stage 1** (implemented): Black-and-white drawing with PencilKit, save/load, undo/redo, eraser
-- **Stage 2** (next): Lasso selection, 3D shape inference from 2D strokes, custom Metal renderer, rotate-and-draw workflow
+- **Stage 2** (implemented): Lasso + smart selection, 3D shape inference from 2D strokes, custom Metal renderer, and the in-place 2.5D edit mode (select → lift → rotate/draw/deform → bake back to flat ink)
 
 ## Key Documents
 
 - **Design spec:** `docs/superpowers/specs/2026-03-13-pensculpt-design.md` — full architecture and requirements
 - **Implementation plan:** `docs/superpowers/plans/2026-03-13-pensculpt-stage1.md` — task-by-task plan with code
+- **2.5D edit mode:** spec `docs/superpowers/specs/2026-07-02-25d-edit-mode-design.md`, plan `docs/superpowers/plans/2026-07-02-25d-edit-mode.md`, guide `guides/03-25d-edit-mode.md`
 - **TODO tracking:** `TODO.md` — all features with completed/optimized/simplified status
 - **Feature guides:** `guides/` — human-readable documentation per feature
 
@@ -31,12 +32,10 @@ PenSculpt is an iPad drawing app for Apple Pencil that lets users draw in 2D and
 ```
 PenSculpt/
 ├── App/           — App entry point, DocumentGroup scene
-├── Models/        — Stroke, StrokePoint, Canvas, StrokeGroup, SculptObject
-├── Drawing/       — PencilKit integration (CanvasView, StrokeConverter)
-├── Views/         — SwiftUI views (DrawingScreen, FloatingToolbar)
-├── Selection/     — SelectionStrategy protocol and implementations
-├── Inference/     — 3D shape inference pipeline (contour, skeleton, fitting, assembly)
-├── Renderer/      — Custom Metal renderer (mesh, strokes, shaders)
+├── Models/        — Stroke, StrokePoint, Canvas, StrokeGroup, SculptObject, Mesh, MeshBVH
+├── Drawing/       — PencilKit integration, selection strategies, inference (ShapeInflater), StrokeLifter
+├── Views/         — SwiftUI views (DrawingScreen, Edit25DOverlay, SculptScreen, FloatingToolbar)
+├── Rendering/     — Custom Metal renderer (SculptRenderer, MetalCanvasView, CameraTransform, EditInputRouter, shaders)
 ├── Persistence/   — PenSculptDocument, file format handling
 ├── Resources/     — Info.plist, Metal shader files, assets
 ```

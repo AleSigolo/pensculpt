@@ -11,7 +11,7 @@ import simd
 enum StrokeLifter {
 
     /// Canvas-pressure ↔ world-width conversion, matching StrokeConverter's
-    /// `size = pressure * 8` and SurfaceStroke.projectTo2D's `pressure = width / 8`.
+    /// `size = pressure * 8` (so `pressure = width / 8` on the way back).
     static let widthPerPressure: Float = 8
 
     /// Projects `strokes` onto the BVH's mesh with −z rays from the viewer
@@ -90,7 +90,7 @@ enum StrokeLifter {
                     timestamp: TimeInterval(i) * 0.01
                 )
             }
-            // Fold session opacity into the color's alpha, like projectTo2D.
+            // Fold session opacity into the color's alpha.
             let color = CodableColor(red: ss.color.red, green: ss.color.green,
                                      blue: ss.color.blue,
                                      alpha: ss.color.alpha * CGFloat(ss.opacity))

@@ -31,24 +31,6 @@ struct SurfaceStroke: Identifiable, Codable, Equatable, Sendable {
 }
 
 extension SurfaceStroke {
-    /// Projects this 3D surface stroke back to 2D canvas coordinates.
-    /// Reverses ShapeInflater's y-negation and discards z.
-    func projectTo2D() -> Stroke {
-        let strokePoints = points.enumerated().map { i, p in
-            StrokePoint(
-                location: CGPoint(x: CGFloat(p.x), y: CGFloat(-p.y)),
-                pressure: CGFloat(i < widths.count ? widths[i] / 8 : 0.5),
-                tilt: .pi / 2,
-                azimuth: 0,
-                timestamp: TimeInterval(i) * 0.01
-            )
-        }
-        let color = CodableColor(red: self.color.red, green: self.color.green,
-                                 blue: self.color.blue,
-                                 alpha: self.color.alpha * CGFloat(opacity))
-        return Stroke(points: strokePoints, color: color)
-    }
-
     /// Re-projects stroke points onto a new mesh by casting rays along `rayDir`.
     /// Points that miss the mesh are dropped. Returns nil if no points survive.
     func reprojected(onto mesh: Mesh, rayDir: SIMD3<Float>, offset: Float, maxTJump: Float = 50) -> SurfaceStroke? {

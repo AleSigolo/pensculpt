@@ -168,6 +168,9 @@ struct SculptScreen: View {
             }
         }
         .onAppear {
+            // Today the only presentation site (Edit25DOverlay's expand
+            // button) always hits the exact-match branch; the overlap and
+            // new-object branches below are kept for future entry points.
             let strokeIDs = Set(strokes.map(\.id))
 
             if let exact = sculptObjects.first(where: { $0.sourceStrokeIDs == strokeIDs }) {

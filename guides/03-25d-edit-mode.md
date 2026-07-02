@@ -25,9 +25,10 @@ ink riding on its surface. The rest of the drawing stays visible around it.
 
 ## Leaving
 
-Tap any empty canvas area (or the checkmark). The shape bakes back to flat
-ink exactly as you last saw it — rotate a face 30° and the drawing keeps that
-30° view. Select the same ink again later to re-lift it and keep editing;
+Tap any empty canvas area with a **finger** (or tap the checkmark). Pencil
+taps never commit, so stippling dots beside the shape with the pencil is
+safe. The shape bakes back to flat ink exactly as you last saw it — rotate a
+face 30° and the drawing keeps that 30° view. Select the same ink again later to re-lift it and keep editing;
 the shape remembers its 3D form and orientation.
 
 ## Notes
