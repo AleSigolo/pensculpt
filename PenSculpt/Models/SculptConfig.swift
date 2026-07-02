@@ -62,6 +62,12 @@ struct SculptConfig: Codable, Equatable, Sendable {
     /// Rejects points that cross to a different surface. Normal variation is ~5-20.
     var surfaceStrokeMaxTJump: Float = 50
 
+    /// Minimum model scale in an edit session (pinch-to-shrink clamp).
+    var editZoomMin: Float = 0.2
+
+    /// Maximum model scale in an edit session (pinch-to-grow clamp).
+    var editZoomMax: Float = 5
+
     /// Display mode: "shaded" for lit surface, "wireframe" for debug mesh.
     var displayMode: String = "shaded"
 

@@ -231,7 +231,7 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
     func zoom(by scale: Float) {
         if editPivot != nil {
-            modelScale = min(max(modelScale * scale, 0.2), 5)
+            modelScale = min(max(modelScale * scale, config.editZoomMin), config.editZoomMax)
         } else {
             combinedRadius /= scale
             combinedRadius = max(combinedRadius, 0.1)
