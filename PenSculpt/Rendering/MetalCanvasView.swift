@@ -19,6 +19,11 @@ class ForceMTKView: MTKView {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
         guard let touch = touches.first else { return }
+        // A new touch sequence begins: flush leftovers from prior gestures
+        // (taps, two-finger rotate/pinch) BEFORE buffering this touch, so
+        // stale samples never leak into the new stroke while its head —
+        // everything buffered before the pan recognizer fires — survives.
+        coalescedSamples.removeAll()
         lastTouchWasPencil = touch.type == .pencil
         lastTouchDownLocation = touch.location(in: self)
         bufferCoalesced(touch: touch, event: event)
@@ -223,16 +228,17 @@ struct MetalCanvasView: UIViewRepresentable {
 
         @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
             applyRotation(gesture)
-            if gesture.state == .ended || gesture.state == .cancelled, let renderer = renderer {
-                onEditTransformChanged?(renderer.rotation, renderer.modelScale)
+            if gesture.state == .ended || gesture.state == .cancelled {
+                reportEditTransform()
             }
         }
 
         @objc func handleSinglePan(_ gesture: UIPanGestureRecognizer) {
-            // Flush stale coalesced samples from prior gestures (taps, two-finger)
-            // so they don't get misinterpreted as stroke points.
+            // Stale samples from prior gestures were already flushed in
+            // ForceMTKView.touchesBegan; the buffer now holds only this
+            // stroke's head (samples between touch-down and pan recognition),
+            // which must NOT be discarded here.
             if gesture.state == .began {
-                (gesture.view as? ForceMTKView)?.coalescedSamples.removeAll()
                 activeDragAction = nil
             }
 
@@ -267,7 +273,7 @@ struct MetalCanvasView: UIViewRepresentable {
             case .rotate:
                 applyRotation(gesture)
                 if gesture.state == .ended || gesture.state == .cancelled {
-                    onEditTransformChanged?(renderer.rotation, renderer.modelScale)
+                    reportEditTransform()
                 }
             case .deform, .smooth:
                 handleDeform(gesture)
@@ -275,7 +281,7 @@ struct MetalCanvasView: UIViewRepresentable {
                 handleDraw(gesture)
             case .drawOnCanvas:
                 handleCanvasDraw(gesture, forceView: forceView)
-            default:
+            case .commit, .ignore, .none:
                 break
             }
 
@@ -302,7 +308,7 @@ struct MetalCanvasView: UIViewRepresentable {
                 renderer.zoom(by: Float(gesture.scale))
                 gesture.scale = 1
             } else if gesture.state == .ended || gesture.state == .cancelled {
-                onEditTransformChanged?(renderer.rotation, renderer.modelScale)
+                reportEditTransform()
             }
         }
 
@@ -312,8 +318,15 @@ struct MetalCanvasView: UIViewRepresentable {
                 renderer.rotateZ(by: Float(gesture.rotation))
                 gesture.rotation = 0
             } else if gesture.state == .ended || gesture.state == .cancelled {
-                onEditTransformChanged?(renderer.rotation, renderer.modelScale)
+                reportEditTransform()
             }
+        }
+
+        /// Reports the current model transform so the edit-session host can
+        /// bake it; no-op outside edit sessions (the callback is nil).
+        private func reportEditTransform() {
+            guard let renderer = renderer else { return }
+            onEditTransformChanged?(renderer.rotation, renderer.modelScale)
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,

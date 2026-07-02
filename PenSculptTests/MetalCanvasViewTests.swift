@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import Metal
 @testable import PenSculpt
 
 final class MetalCanvasViewTests: XCTestCase {
@@ -26,10 +27,9 @@ final class MetalCanvasViewTests: XCTestCase {
         XCTAssertTrue(view.coalescedSamples.isEmpty)
     }
 
-    // MARK: - Stale buffer flush on gesture began
+    // MARK: - Stale buffer flush at touch-down
 
-    func testSinglePanBeganFlushesStaleCoalescedSamples() {
-        let coordinator = MetalCanvasView.Coordinator()
+    func testTouchDownFlushesStaleSamplesButKeepsNewStrokeHead() {
         let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
 
         // Simulate stale samples from prior gestures (taps, two-finger rotate/pinch)
@@ -37,14 +37,17 @@ final class MetalCanvasViewTests: XCTestCase {
         view.coalescedSamples.append((location: CGPoint(x: 200, y: 200), force: 0.8, maxForce: 1.0, timestamp: 0))
         XCTAssertEqual(view.coalescedSamples.count, 2)
 
-        let gesture = MockPanGestureRecognizer(target: nil, action: nil)
-        gesture.mockState = .began
-        gesture.mockView = view
+        let touch = MockTouch()
+        touch.mockLocation = CGPoint(x: 10, y: 20)
+        view.touchesBegan([touch], with: nil)
 
-        coordinator.handleSinglePan(gesture)
-
-        XCTAssertTrue(view.coalescedSamples.isEmpty,
-                      "Stale coalesced samples should be cleared when single-finger gesture begins")
+        // Stale samples from the previous sequence are gone; the new touch's
+        // own first sample — the stroke head — is buffered, not discarded.
+        XCTAssertEqual(view.coalescedSamples.count, 1,
+                       "Touch-down should flush prior-sequence samples and buffer the new head")
+        XCTAssertEqual(view.coalescedSamples[0].location, CGPoint(x: 10, y: 20))
+        XCTAssertEqual(view.lastTouchDownLocation, CGPoint(x: 10, y: 20))
+        XCTAssertFalse(view.lastTouchWasPencil)
     }
 
     func testSinglePanChangedDoesNotPreFlush() {
@@ -58,11 +61,11 @@ final class MetalCanvasViewTests: XCTestCase {
         gesture.mockState = .changed
         gesture.mockView = view
 
-        // handleDraw will exit early (no renderer), so samples remain if pre-flush didn't run
+        // handleDraw will exit early (no renderer), so samples remain untouched
         coordinator.handleSinglePan(gesture)
 
         XCTAssertEqual(view.coalescedSamples.count, 1,
-                       "Pre-flush should only occur on .began, not .changed")
+                       "The gesture handler must not flush buffered samples on .changed")
     }
 
     func testSinglePanEndedDoesNotPreFlush() {
@@ -80,41 +83,126 @@ final class MetalCanvasViewTests: XCTestCase {
         // handleDraw's .ended branch clears the buffer too, but only after processing.
         // Without a renderer, handleDraw exits early, leaving samples untouched.
         XCTAssertEqual(view.coalescedSamples.count, 1,
-                       "Pre-flush should only occur on .began, not .ended")
+                       "The gesture handler must not flush buffered samples on .ended before processing")
     }
 
-    func testBeganFlushWorksInDeformMode() {
-        let coordinator = MetalCanvasView.Coordinator()
-        coordinator.isDeformMode = true
+    func testTouchDownRecordsPencilPointer() {
         let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
+        let touch = MockTouch()
+        touch.mockType = .pencil
+        view.touchesBegan([touch], with: nil)
+        XCTAssertTrue(view.lastTouchWasPencil)
+    }
 
-        view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.3, maxForce: 1.0, timestamp: 0))
+    func testSinglePanBeganPreservesStrokeHeadInAllModes() {
+        // The flush moved to touchesBegan; the recognizer's .began must never
+        // discard the stroke head buffered between touch-down and recognition.
+        for (rotate, deform) in [(false, false), (true, false), (false, true)] {
+            let coordinator = MetalCanvasView.Coordinator()
+            coordinator.isRotateMode = rotate
+            coordinator.isDeformMode = deform
+            let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
+
+            view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.3, maxForce: 1.0, timestamp: 0))
+
+            let gesture = MockPanGestureRecognizer(target: nil, action: nil)
+            gesture.mockState = .began
+            gesture.mockView = view
+
+            coordinator.handleSinglePan(gesture)
+
+            XCTAssertEqual(view.coalescedSamples.count, 1,
+                           "Stroke head must survive recognizer .began (rotate: \(rotate), deform: \(deform))")
+        }
+    }
+
+    // MARK: - Edit-session routing
+
+    func testEditSessionOffMeshPencilDragCapturesCanvasStroke() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("Metal is not available in this environment")
+        }
+        let renderer = try XCTUnwrap(SculptRenderer(device: device))
+        let coordinator = MetalCanvasView.Coordinator()
+        coordinator.renderer = renderer
+        coordinator.isEditSession = true
+
+        let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
+        view.lastTouchWasPencil = true
+        view.lastTouchDownLocation = CGPoint(x: 10, y: 10)
+
+        var completed: Stroke?
+        coordinator.onCanvasStrokeCompleted = { completed = $0 }
 
         let gesture = MockPanGestureRecognizer(target: nil, action: nil)
-        gesture.mockState = .began
         gesture.mockView = view
 
+        // No sculpt objects → hitTest returns nil → the pencil drag starts
+        // off-mesh and must classify as .drawOnCanvas. The head samples
+        // buffered between touch-down and pan recognition must survive.
+        view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.5, maxForce: 1.0, timestamp: 100.00))
+        view.coalescedSamples.append((location: CGPoint(x: 12, y: 11), force: 0.5, maxForce: 1.0, timestamp: 100.01))
+        gesture.mockState = .began
         coordinator.handleSinglePan(gesture)
 
-        XCTAssertTrue(view.coalescedSamples.isEmpty,
-                      "Stale samples should be flushed on .began regardless of mode")
+        XCTAssertEqual(renderer.currentCanvasStrokePoints.count, 2,
+                       "The stroke head buffered before .began must be captured, not discarded")
+        XCTAssertEqual(renderer.currentCanvasStrokePoints.first, SIMD3<Float>(10, -10, 0))
+
+        view.coalescedSamples.append((location: CGPoint(x: 20, y: 15), force: 0.6, maxForce: 1.0, timestamp: 100.02))
+        gesture.mockState = .changed
+        coordinator.handleSinglePan(gesture)
+        XCTAssertEqual(renderer.currentCanvasStrokePoints.count, 3)
+
+        gesture.mockState = .ended
+        coordinator.handleSinglePan(gesture)
+
+        let stroke = try XCTUnwrap(completed, "Ending the drag must fire onCanvasStrokeCompleted")
+        XCTAssertEqual(stroke.points.count, 3)
+        XCTAssertEqual(stroke.points[0].location, CGPoint(x: 10, y: 10),
+                       "The first buffered sample must survive as the committed stroke's head")
+        XCTAssertEqual(stroke.points[0].timestamp, 0, "Timestamps must be t0-relative")
+        XCTAssertEqual(stroke.points[2].timestamp, 0.02, accuracy: 1e-6)
+        XCTAssertTrue(renderer.currentCanvasStrokePoints.isEmpty,
+                      "Live preview points must be cleared on gesture end")
+        XCTAssertTrue(renderer.currentCanvasStrokeWidths.isEmpty,
+                      "Live preview widths must be cleared on gesture end")
     }
 
-    func testBeganFlushWorksInRotateMode() {
+    func testEditSessionDragActionLatchIgnoresMidDragModeChange() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("Metal is not available in this environment")
+        }
+        let renderer = try XCTUnwrap(SculptRenderer(device: device))
         let coordinator = MetalCanvasView.Coordinator()
+        coordinator.renderer = renderer
+        coordinator.isEditSession = true
+
+        let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
+        view.lastTouchWasPencil = true
+        view.lastTouchDownLocation = CGPoint(x: 10, y: 10)
+
+        let gesture = MockPanGestureRecognizer(target: nil, action: nil)
+        gesture.mockView = view
+
+        // Classified once at .began: pencil, off-mesh → .drawOnCanvas.
+        view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.5, maxForce: 1.0, timestamp: 0))
+        gesture.mockState = .began
+        coordinator.handleSinglePan(gesture)
+        XCTAssertEqual(renderer.currentCanvasStrokePoints.count, 1)
+
+        // Mid-drag mode flip must NOT reclassify the latched action:
+        // the stroke keeps accumulating instead of switching to rotate.
         coordinator.isRotateMode = true
-        let view = ForceMTKView(frame: CGRect(x: 0, y: 0, width: 300, height: 300), device: nil)
-
-        view.coalescedSamples.append((location: CGPoint(x: 10, y: 10), force: 0.3, maxForce: 1.0, timestamp: 0))
-
-        let gesture = MockPanGestureRecognizer(target: nil, action: nil)
-        gesture.mockState = .began
-        gesture.mockView = view
-
+        view.coalescedSamples.append((location: CGPoint(x: 20, y: 20), force: 0.5, maxForce: 1.0, timestamp: 0.01))
+        gesture.mockState = .changed
         coordinator.handleSinglePan(gesture)
+        XCTAssertEqual(renderer.currentCanvasStrokePoints.count, 2,
+                       "Latched .drawOnCanvas action must keep accumulating despite mid-drag mode change")
 
-        XCTAssertTrue(view.coalescedSamples.isEmpty,
-                      "Stale samples should be flushed on .began regardless of mode")
+        gesture.mockState = .ended
+        coordinator.handleSinglePan(gesture)
+        XCTAssertTrue(renderer.currentCanvasStrokePoints.isEmpty)
     }
 
     // MARK: - Simultaneous gesture recognition
@@ -191,4 +279,16 @@ private class MockPanGestureRecognizer: UIPanGestureRecognizer {
 
     var mockView: UIView?
     override var view: UIView? { mockView }
+}
+
+// MARK: - Mock touch
+
+private class MockTouch: UITouch {
+    var mockLocation: CGPoint = .zero
+    var mockType: UITouch.TouchType = .direct
+    override func location(in view: UIView?) -> CGPoint { mockLocation }
+    override var type: UITouch.TouchType { mockType }
+    override var force: CGFloat { 0.5 }
+    override var maximumPossibleForce: CGFloat { 1.0 }
+    override var timestamp: TimeInterval { 42 }
 }
