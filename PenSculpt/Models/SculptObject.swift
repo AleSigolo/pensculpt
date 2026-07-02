@@ -142,7 +142,12 @@ struct SculptObject: Identifiable, Codable, Equatable, Sendable {
         originRect = try container.decodeIfPresent(CGRect.self, forKey: .originRect) ?? .zero
         let ov = try container.decodeIfPresent(SIMD4<Float>.self, forKey: .orientation)
             ?? SIMD4(0, 0, 0, 1)
-        orientation = simd_quatf(vector: ov)
+        // Guard against corrupt data: a non-finite or near-zero quaternion would
+        // collapse or NaN-poison the mesh when rotating, so fall back to identity.
+        let length = simd_length(ov)
+        orientation = length.isFinite && length > 1e-6
+            ? simd_quatf(vector: ov / length)
+            : simd_quatf(vector: SIMD4(0, 0, 0, 1))
         scale = try container.decodeIfPresent(Float.self, forKey: .scale) ?? 1
     }
 
