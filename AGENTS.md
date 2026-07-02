@@ -49,11 +49,11 @@ xcodegen generate
 
 # Build
 xcodebuild -project PenSculpt.xcodeproj -scheme PenSculpt \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' build
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' build
 
 # Test
 xcodebuild test -project PenSculpt.xcodeproj -scheme PenSculpt \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)'
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
 ```
 
 ## Conventions
