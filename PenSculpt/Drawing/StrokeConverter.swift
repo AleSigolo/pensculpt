@@ -12,7 +12,11 @@ enum StrokeConverter {
             let p = path[i]
             points.append(StrokePoint(
                 location: p.location,
-                pressure: p.force,
+                // Pressure canonically stores rendered-ink-width / widthPerPressure
+                // so PK → internal → PK round-trips the width exactly. Raw force
+                // is unreliable for finger input (always 0) and ignores the pen
+                // width setting.
+                pressure: p.size.width / CGFloat(StrokeLifter.widthPerPressure),
                 tilt: p.altitude,
                 azimuth: p.azimuth,
                 timestamp: p.timeOffset
@@ -32,7 +36,8 @@ enum StrokeConverter {
             PKStrokePoint(
                 location: p.location,
                 timeOffset: p.timestamp,
-                size: CGSize(width: p.pressure * 8, height: p.pressure * 8),
+                size: CGSize(width: p.pressure * CGFloat(StrokeLifter.widthPerPressure),
+                             height: p.pressure * CGFloat(StrokeLifter.widthPerPressure)),
                 opacity: stroke.color.alpha,
                 force: p.pressure,
                 azimuth: p.azimuth,
