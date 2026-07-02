@@ -45,11 +45,16 @@ class DrawingViewModel {
         if appMode == .draw {
             appMode = .select
         } else {
-            appMode = .draw
-            lassoPoints = []
-            selectedStrokeIDs = []
-            activeStrategy = .lasso
+            resetToDrawMode()
         }
+    }
+
+    /// Returns to draw mode with a clean selection state.
+    private func resetToDrawMode() {
+        appMode = .draw
+        lassoPoints = []
+        selectedStrokeIDs = []
+        activeStrategy = .lasso
     }
 
     // MARK: - Tool management
@@ -66,6 +71,7 @@ class DrawingViewModel {
     // MARK: - Selection
 
     func handleLassoCompleted(polygon: [CGPoint]) {
+        guard appMode == .select else { return }
         selectedStrokeIDs = LassoSelection.selectedStrokeIDs(
             strokes: canvas.strokes,
             polygon: polygon
@@ -78,16 +84,14 @@ class DrawingViewModel {
     }
 
     func handleSmartSelectCommitted(strokeIDs: Set<UUID>) {
+        guard appMode == .select else { return }
         selectedStrokeIDs = strokeIDs
         if hasSelection { appMode = .edit }
     }
 
     /// Leaves 2.5D edit mode and returns to drawing with a clean selection state.
     func exitEditMode() {
-        appMode = .draw
-        lassoPoints = []
-        selectedStrokeIDs = []
-        activeStrategy = .lasso
+        resetToDrawMode()
     }
 
     // MARK: - Stroke mutations

@@ -107,6 +107,7 @@ final class DrawingViewModelTests: XCTestCase {
         let vm = makeVM()
         let stroke = makeStroke(at: CGPoint(x: 50, y: 50))
         vm.addStroke(stroke)
+        vm.appMode = .select
 
         let polygon = [
             CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0),
@@ -121,6 +122,7 @@ final class DrawingViewModelTests: XCTestCase {
         let vm = makeVM()
         let stroke = makeStroke(at: CGPoint(x: 500, y: 500))
         vm.addStroke(stroke)
+        vm.appMode = .select
 
         let polygon = [
             CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0),
@@ -170,6 +172,7 @@ final class DrawingViewModelTests: XCTestCase {
         let s2 = makeStroke(at: CGPoint(x: 500, y: 500))
         vm.addStroke(s1)
         vm.addStroke(s2)
+        vm.appMode = .select
 
         vm.handleSmartSelectCommitted(strokeIDs: [s1.id])
 
@@ -267,5 +270,33 @@ final class DrawingViewModelTests: XCTestCase {
         vm.handleSmartSelectCommitted(strokeIDs: [stroke.id])
         vm.toggleMode()
         XCTAssertEqual(vm.appMode, .edit)
+    }
+
+    func testLassoCommitFromDrawModeDoesNotEnterEdit() {
+        let (vm, _) = makeVMWithStroke()
+        // appMode stays .draw: selection commits must be no-ops outside .select.
+        vm.handleLassoCompleted(polygon: [
+            CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0),
+            CGPoint(x: 100, y: 100), CGPoint(x: 0, y: 100)
+        ])
+        XCTAssertEqual(vm.appMode, .draw)
+        XCTAssertFalse(vm.hasSelection)
+    }
+
+    func testSmartSelectCommitFromDrawModeDoesNotEnterEdit() {
+        let (vm, stroke) = makeVMWithStroke()
+        vm.handleSmartSelectCommitted(strokeIDs: [stroke.id])
+        XCTAssertEqual(vm.appMode, .draw)
+        XCTAssertFalse(vm.hasSelection)
+    }
+
+    func testPencilDoubleTapIgnoredInEditMode() {
+        let (vm, stroke) = makeVMWithStroke()
+        vm.appMode = .select
+        vm.handleSmartSelectCommitted(strokeIDs: [stroke.id])
+        XCTAssertEqual(vm.appMode, .edit)
+
+        vm.handlePencilDoubleTap()
+        XCTAssertEqual(vm.selectedTool, .pen, "Double-tap should be ignored in edit mode")
     }
 }
