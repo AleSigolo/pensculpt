@@ -3,7 +3,6 @@ import SwiftUI
 struct SculptScreen: View {
     var strokes: [Stroke]
     @Binding var sculptObjects: [SculptObject]
-    @Binding var autoProjectStrokes: Bool
     var config: SculptConfig = .default
     @State private var activeObjectID: UUID?
     @State private var isRotateMode = false
@@ -85,15 +84,6 @@ struct SculptScreen: View {
                     }
                 }
                 .disabled(isReInferring)
-
-                Button {
-                    autoProjectStrokes.toggle()
-                } label: {
-                    Image(systemName: autoProjectStrokes ? "arrow.down.doc.fill" : "arrow.down.doc")
-                        .font(.title)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(autoProjectStrokes ? .blue : .secondary)
-                }
             }
             .padding()
         }

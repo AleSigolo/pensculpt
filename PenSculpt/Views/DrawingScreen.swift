@@ -9,8 +9,11 @@ struct DrawingScreen: View {
     @State private var pkDrawing = PKDrawing()
     @State private var drawingSyncTask: Task<Void, Never>?
     @State private var viewBridge = ViewBridge()
-    @State private var projectedStrokeIDs: Set<UUID> = []
-    @State private var autoProjectStrokes = true
+    @State private var hiddenPKStrokes: [(index: Int, id: UUID, stroke: PKStroke)] = []
+    @State private var editSourceStrokes: [Stroke] = []
+    @State private var unliftedSourceIDs: Set<UUID> = []
+    @State private var showInferenceFailedToast = false
+    @State private var showFullSculpt = false
     @Environment(\.undoManager) private var undoManager
 
     init(canvas: Binding<Canvas>, drawingData: Binding<Data>, sculptObjects: Binding<[SculptObject]>) {
@@ -27,21 +30,23 @@ struct DrawingScreen: View {
             selectModeOverlay
             if vm.appMode == .select { selectStrategyControls }
             if vm.appMode == .draw { drawModeControls }
-            if vm.appMode == .select && vm.hasSelection { sculptButton }
+            if vm.appMode == .edit { editOverlay }
         }
         .overlay(alignment: .top) { savedMessageOverlay }
-        .fullScreenCover(isPresented: $vm.showSculptScreen, onDismiss: projectSurfaceStrokes) {
-            SculptScreen(strokes: vm.selectedStrokes, sculptObjects: $sculptObjects,
-                         autoProjectStrokes: $autoProjectStrokes)
+        .fullScreenCover(isPresented: $showFullSculpt) {
+            SculptScreen(strokes: editSourceStrokes, sculptObjects: $sculptObjects)
         }
         .toolbar { navBarItems }
         .onAppear { loadDrawingData() }
+        .onChange(of: vm.appMode) { oldMode, newMode in
+            if newMode == .edit { beginEditSession() }
+        }
         .onChange(of: vm.canvas) { _, _ in
             guard vm.autosaveEnabled else { return }
             documentCanvas = vm.canvas
         }
         .onChange(of: pkDrawing) { _, newDrawing in
-            guard vm.autosaveEnabled else { return }
+            guard vm.autosaveEnabled, vm.appMode != .edit else { return }
             debounceSyncDrawing(newDrawing)
         }
         .onChange(of: vm.autosaveEnabled) { _, enabled in
@@ -83,23 +88,19 @@ struct DrawingScreen: View {
             .padding(.bottom, vm.hasSelection ? 96 : 30)
     }
 
-    private var sculptButton: some View {
-        Button { vm.showSculptScreen = true } label: {
-            Label("Sculpt", systemImage: "cube")
-                .font(.headline)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(.blue, in: Capsule())
-                .foregroundStyle(.white)
-        }
-        .padding(.bottom, 30)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
     @ViewBuilder
     private var savedMessageOverlay: some View {
         if vm.showSavedMessage {
             Text("Saved!")
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.top, 60)
+        }
+        if showInferenceFailedToast {
+            Text("Couldn't lift that selection")
                 .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -112,12 +113,14 @@ struct DrawingScreen: View {
     private var navBarItems: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             HStack(spacing: 12) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { vm.toggleMode() }
-                } label: {
-                    Image(systemName: vm.appMode == .draw ? "lasso" : "pencil.tip")
-                        .font(.title3)
-                        .foregroundStyle(.blue)
+                if vm.appMode != .edit {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { vm.toggleMode() }
+                    } label: {
+                        Image(systemName: vm.appMode == .draw ? "lasso" : "pencil.tip")
+                            .font(.title3)
+                            .foregroundStyle(.blue)
+                    }
                 }
 
                 Button {
@@ -234,23 +237,6 @@ struct DrawingScreen: View {
         }
     }
 
-    private func projectSurfaceStrokes() {
-        guard autoProjectStrokes else { return }
-        var newPKStrokes: [PKStroke] = []
-        for obj in sculptObjects {
-            for surfaceStroke in obj.surfaceStrokes
-                where surfaceStroke.points.count > 1 && !projectedStrokeIDs.contains(surfaceStroke.id) {
-                let stroke2D = surfaceStroke.projectTo2D()
-                vm.addStroke(stroke2D)
-                newPKStrokes.append(StrokeConverter.toPKStroke(stroke2D))
-                projectedStrokeIDs.insert(surfaceStroke.id)
-            }
-        }
-        if !newPKStrokes.isEmpty {
-            pkDrawing = PKDrawing(strokes: pkDrawing.strokes + newPKStrokes)
-        }
-    }
-
     private func clearWithUndo() {
         let previousStrokes = vm.canvas.strokes
         let previousDrawing = pkDrawing
@@ -259,6 +245,127 @@ struct DrawingScreen: View {
         undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
             vm.canvas.strokes = previousStrokes
             pkDrawing = previousDrawing
+        }
+    }
+
+    // MARK: - 2.5D edit session
+
+    private var editOverlay: some View {
+        Edit25DOverlay(
+            sourceStrokes: editSourceStrokes,
+            sculptObjects: $sculptObjects,
+            onCommit: handleEditCommit,
+            onCanvasStroke: handleEditCanvasStroke,
+            onInferenceFailed: cancelEditSession,
+            onExpandRequested: { showFullSculpt = true },
+            onSourceStrokesLifted: handleSourceStrokesLifted
+        )
+        .ignoresSafeArea()
+        .transition(.opacity)
+    }
+
+    /// Some selected strokes couldn't be lifted onto the mesh (e.g. ink the
+    /// lasso caught that lies off the inferred shape). Un-hide their PK ink —
+    /// they stay ordinary flat strokes and survive commit untouched.
+    private func handleSourceStrokesLifted(_ unlifted: Set<UUID>) {
+        unliftedSourceIDs = unlifted
+        guard !unlifted.isEmpty else { return }
+        let toRestore = hiddenPKStrokes.filter { unlifted.contains($0.id) }
+        var strokes = pkDrawing.strokes
+        for entry in toRestore.sorted(by: { $0.index < $1.index }) {
+            strokes.insert(entry.stroke, at: min(entry.index, strokes.count))
+        }
+        pkDrawing = PKDrawing(strokes: strokes)
+        hiddenPKStrokes.removeAll { unlifted.contains($0.id) }
+    }
+
+    /// Snapshot the selection and hide its PK ink so the lifted mesh replaces
+    /// it visually. canvas.strokes keeps the originals until commit.
+    private func beginEditSession() {
+        editSourceStrokes = vm.selectedStrokes
+        let ids = vm.selectedStrokeIDs
+        var kept: [PKStroke] = []
+        var removed: [(index: Int, id: UUID, stroke: PKStroke)] = []
+        for (i, pk) in pkDrawing.strokes.enumerated() {
+            if i < vm.canvas.strokes.count, ids.contains(vm.canvas.strokes[i].id) {
+                removed.append((index: i, id: vm.canvas.strokes[i].id, stroke: pk))
+            } else {
+                kept.append(pk)
+            }
+        }
+        hiddenPKStrokes = removed
+        unliftedSourceIDs = []
+        pkDrawing = PKDrawing(strokes: kept)
+    }
+
+    /// Inference failed: restore the hidden ink exactly as it was.
+    private func cancelEditSession() {
+        var strokes = pkDrawing.strokes
+        for entry in hiddenPKStrokes.sorted(by: { $0.index < $1.index }) {
+            strokes.insert(entry.stroke, at: min(entry.index, strokes.count))
+        }
+        pkDrawing = PKDrawing(strokes: strokes)
+        hiddenPKStrokes = []
+        editSourceStrokes = []
+        unliftedSourceIDs = []
+        withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
+        withAnimation { showInferenceFailedToast = true }
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            withAnimation { showInferenceFailedToast = false }
+        }
+    }
+
+    /// A flat stroke drawn beside the shape mid-session: ordinary canvas ink.
+    private func handleEditCanvasStroke(_ stroke: Stroke) {
+        vm.addStroke(stroke)
+        pkDrawing = PKDrawing(strokes: pkDrawing.strokes + [StrokeConverter.toPKStroke(stroke)])
+        undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
+            vm.removeStroke(id: stroke.id)
+            pkDrawing = PKDrawing(strokes: pkDrawing.strokes.dropLast())
+        }
+    }
+
+    /// Bake: lifted originals out, rotated projection in; unlifted originals
+    /// stay untouched. One undoable operation.
+    private func handleEditCommit(_ objectID: UUID, _ bakedStrokes: [Stroke]) {
+        let previousCanvasStrokes = vm.canvas.strokes
+        let previousPKDrawing = PKDrawing(strokes: hiddenPKStrokes
+            .sorted(by: { $0.index < $1.index })
+            .reduce(into: pkDrawing.strokes) { $0.insert($1.stroke, at: min($1.index, $0.count)) })
+        let previousObjects = sculptObjects
+
+        // Remove lifted source strokes from the model (their PK ink is already
+        // hidden). Unlifted ones were never removed from pkDrawing's visible
+        // set (handleSourceStrokesLifted restored them) and stay in canvas.
+        if let idx = sculptObjects.firstIndex(where: { $0.id == objectID }) {
+            for id in sculptObjects[idx].sourceStrokeIDs where !unliftedSourceIDs.contains(id) {
+                vm.removeStroke(id: id)
+            }
+            // Re-selection of "the shape" must match baked ink + carried-through
+            // originals, so both sets form the object's new source identity.
+            sculptObjects[idx].sourceStrokeIDs = Set(bakedStrokes.map(\.id))
+                .union(unliftedSourceIDs)
+            sculptObjects[idx].unliftedStrokeIDs = unliftedSourceIDs
+        }
+
+        // Insert the baked ink into both stores (kept parallel: both appended at the end).
+        var newPKStrokes: [PKStroke] = []
+        for stroke in bakedStrokes where stroke.points.count > 1 {
+            vm.addStroke(stroke)
+            newPKStrokes.append(StrokeConverter.toPKStroke(stroke))
+        }
+        pkDrawing = PKDrawing(strokes: pkDrawing.strokes + newPKStrokes)
+
+        hiddenPKStrokes = []
+        editSourceStrokes = []
+        unliftedSourceIDs = []
+        withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
+
+        undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
+            vm.canvas.strokes = previousCanvasStrokes
+            pkDrawing = previousPKDrawing
+            sculptObjects = previousObjects
         }
     }
 }

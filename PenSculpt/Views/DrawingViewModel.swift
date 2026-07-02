@@ -13,7 +13,6 @@ class DrawingViewModel {
     var lassoPoints: [CGPoint] = []
     var selectedStrokeIDs: Set<UUID> = []
     var activeStrategy: SelectionStrategyKind = .lasso
-    var showSculptScreen = false
 
     /// Tracks the last eraser type for pencil double-tap toggle.
     private(set) var lastEraserType: DrawingTool = .eraser
