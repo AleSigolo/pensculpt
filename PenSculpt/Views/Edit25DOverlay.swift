@@ -203,6 +203,7 @@ struct Edit25DOverlay: View {
             guard !obj.mesh.isEmpty else {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
+                    guard !Task.isCancelled else { return }
                     isInferring = false
                     onInferenceFailed()
                 }
@@ -213,6 +214,7 @@ struct Edit25DOverlay: View {
                                          offset: cfg.surfaceStrokeOffset)
             guard !Task.isCancelled else { return }
             await MainActor.run {
+                guard !Task.isCancelled else { return }
                 var newObj = obj
                 newObj.surfaceStrokes = lift.lifted
                 newObj.unliftedStrokeIDs = lift.unliftedStrokeIDs
