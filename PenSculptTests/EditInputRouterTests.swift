@@ -46,10 +46,51 @@ final class EditInputRouterTests: XCTestCase {
     }
 
     func testTapOffMeshCommits() {
-        XCTAssertEqual(EditInputRouter.tapAction(onMesh: false), .commit)
+        XCTAssertEqual(EditInputRouter.tapAction(onMesh: false, pointer: .finger), .commit)
     }
 
     func testTapOnMeshIsIgnored() {
-        XCTAssertEqual(EditInputRouter.tapAction(onMesh: true), .ignore)
+        XCTAssertEqual(EditInputRouter.tapAction(onMesh: true, pointer: .finger), .ignore)
+    }
+
+    func testPencilTapOffMeshIsIgnored() {
+        // Stippling dots beside the shape must never eject the user from the session.
+        XCTAssertEqual(EditInputRouter.tapAction(onMesh: false, pointer: .pencil), .ignore)
+    }
+
+    func testPencilTapOnMeshIsIgnored() {
+        XCTAssertEqual(EditInputRouter.tapAction(onMesh: true, pointer: .pencil), .ignore)
+    }
+
+    func testDragActionExhaustiveMatrix() {
+        // Independent mirror of the precedence rules: thumb > tool > pointer.
+        func expected(_ pointer: EditInputRouter.Pointer, _ onMesh: Bool,
+                      _ thumb: Bool, _ tool: EditInputRouter.Tool) -> EditInputRouter.Action {
+            if thumb { return .rotate }
+            switch tool {
+            case .deform: return .deform
+            case .smooth: return .smooth
+            case .eraseStroke: return .eraseStroke
+            case .draw:
+                if pointer == .finger { return .rotate }
+                return onMesh ? .drawOnSurface : .drawOnCanvas
+            }
+        }
+
+        let pointers: [EditInputRouter.Pointer] = [.pencil, .finger]
+        let tools: [EditInputRouter.Tool] = [.draw, .deform, .smooth, .eraseStroke]
+        for pointer in pointers {
+            for onMesh in [false, true] {
+                for thumb in [false, true] {
+                    for tool in tools {
+                        XCTAssertEqual(
+                            EditInputRouter.dragAction(pointer: pointer, startedOnMesh: onMesh,
+                                                       thumbRotateHeld: thumb, tool: tool),
+                            expected(pointer, onMesh, thumb, tool),
+                            "pointer=\(pointer) onMesh=\(onMesh) thumb=\(thumb) tool=\(tool)")
+                    }
+                }
+            }
+        }
     }
 }
