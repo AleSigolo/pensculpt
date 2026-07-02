@@ -343,7 +343,9 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
         // In-progress flat 2D stroke beside the shape (edit mode only): drawn
         // on the canvas plane with the projection-only MVP so it stays put
-        // while the model rotates.
+        // while the model rotates. This block rebinds the index-2 uniforms and
+        // MUST stay the last draw in this pass — anything drawn after it would
+        // silently use the canvas-only MVP.
         if editPivot != nil, currentCanvasStrokePoints.count > 1 {
             var canvasUniforms = StrokeRenderUniforms(mvpMatrix: canvasOnlyMVP)
             encoder.setVertexBytes(&canvasUniforms, length: MemoryLayout<StrokeRenderUniforms>.size, index: 2)
