@@ -139,6 +139,40 @@ final class StrokeLifterTests: XCTestCase {
         XCTAssertEqual(unlifted, [stroke.id])
     }
 
+    func testLiftSmoothsDepthSpikesFromSilhouetteCliffs() {
+        // Border ink rides the inflated mesh's near-vertical rim, where
+        // adjacent rays alternate between the rounded top and partway down
+        // the cliff — raw hit depths zigzag by tens of points and the lifted
+        // line "serpentines" the moment the object rotates. Simulate with a
+        // thin tall ridge: a stroke crossing it must come out with smooth
+        // depth, and its canvas XY must be untouched.
+        let left = quad(xRange: 0...14)
+        var ridge = quad(xRange: 14...16, baseIndex: 4)
+        ridge.vertices = ridge.vertices.map {
+            MeshVertex(position: SIMD3($0.position.x, $0.position.y, 25),
+                       normal: $0.normal)
+        }
+        let right = quad(xRange: 16...30, baseIndex: 8)
+        let mesh = Mesh(vertices: left.vertices + ridge.vertices + right.vertices,
+                        faces: left.faces + ridge.faces + right.faces)
+
+        let xs: [CGFloat] = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29]
+        let stroke = makeStroke(xs.map { CGPoint(x: $0, y: 50) })
+        let (lifted, _) = lift([stroke], onto: mesh, offset: 0.5)
+
+        XCTAssertEqual(lifted.count, 1)
+        XCTAssertEqual(lifted[0].points.count, xs.count)
+        for (i, p) in lifted[0].points.enumerated() {
+            XCTAssertEqual(p.x, Float(xs[i]), accuracy: 0.01, "XY must never change")
+            XCTAssertEqual(p.y, -50, accuracy: 0.01, "XY must never change")
+        }
+        // The single-sample 20pt spike at x=15 must be flattened away.
+        for i in 1..<lifted[0].points.count {
+            let dz = abs(lifted[0].points[i].z - lifted[0].points[i - 1].z)
+            XCTAssertLessThan(dz, 4, "depth still jumps \(dz)pt between samples \(i-1) and \(i)")
+        }
+    }
+
     func testLiftReportsFullyMissingStrokeAsUnlifted() {
         let mesh = makeFlatMesh()
         let stroke = makeStroke([CGPoint(x: 500, y: 500), CGPoint(x: 600, y: 600)])

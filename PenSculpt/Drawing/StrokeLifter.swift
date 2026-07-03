@@ -53,7 +53,8 @@ enum StrokeLifter {
                 if points.count > 1 {
                     // opacity stays 1: color already carries the stroke's alpha,
                     // and bake folds session opacity into it (never double-count).
-                    lifted.append(SurfaceStroke(points: points, widths: widths,
+                    lifted.append(SurfaceStroke(points: smoothedDepths(points),
+                                                widths: widths,
                                                 opacity: 1, color: stroke.color))
                     producedSegment = true
                 }
@@ -81,6 +82,30 @@ enum StrokeLifter {
             if !producedSegment { unliftedStrokeIDs.insert(stroke.id) }
         }
         return (lifted, unliftedStrokeIDs)
+    }
+
+    /// Smooths a lifted segment's DEPTH only — canvas XY is registration and
+    /// must never move. Border ink rides the inflated mesh's near-vertical
+    /// rim, where adjacent −z rays land alternately on the rounded top and
+    /// partway down the cliff: raw hit depths zigzag by tens of points, so
+    /// the line "serpentines" as soon as the object rotates (and z-fights
+    /// the wall). A moving median (window 5) kills the one-to-two-sample
+    /// spikes, then a moving average (window 3) relaxes the tessellation
+    /// steps. Windows shrink at segment ends; XY and widths are untouched.
+    private static func smoothedDepths(_ points: [SIMD3<Float>]) -> [SIMD3<Float>] {
+        guard points.count > 2 else { return points }
+
+        func filtered(_ zs: [Float], window: Int, reduce: ([Float]) -> Float) -> [Float] {
+            let half = window / 2
+            return zs.indices.map { i in
+                let lo = max(0, i - half), hi = min(zs.count - 1, i + half)
+                return reduce(Array(zs[lo...hi]))
+            }
+        }
+        var zs = points.map(\.z)
+        zs = filtered(zs, window: 5) { $0.sorted()[$0.count / 2] }
+        zs = filtered(zs, window: 3) { $0.reduce(0, +) / Float($0.count) }
+        return zip(points, zs).map { SIMD3($0.x, $0.y, $1) }
     }
 
     /// −z raycast at canvas-world (x, y); on a miss, retries in rings of
