@@ -18,10 +18,14 @@ struct Edit25DOverlay: View {
     /// re-inserting hidden ink — the undo already restored a consistent
     /// canvas/pkDrawing pair.
     var onSessionInvalidated: () -> Void
-    /// Reports the source strokes that could NOT be lifted onto the mesh
-    /// (empty when everything lifted). DrawingScreen un-hides these so they
-    /// stay visible flat ink and survive commit untouched.
-    var onSourceStrokesLifted: (Set<UUID>) -> Void
+    /// Reports how the session resolved the source strokes, in the same
+    /// main-actor turn the mesh mounts: `hidden` is the ink now riding the
+    /// mesh (the host removes its PK strokes so the mesh replaces it
+    /// visually — on a re-entry this covers the WHOLE object, which can be
+    /// wider than the selection), and `unlifted` is flat ink that stays
+    /// visible and survives commit untouched (never-lifted strokes plus
+    /// selected strokes that don't belong to the object).
+    var onSourceStrokesResolved: (_ hidden: Set<UUID>, _ unlifted: Set<UUID>) -> Void
 
     @State private var activeObjectID: UUID?
     @State private var isRotateMode = false
@@ -204,22 +208,50 @@ struct Edit25DOverlay: View {
         SIMD3(Float(obj.originRect.midX), -Float(obj.originRect.midY), 0)
     }
 
+    /// Resolves a selection to an existing sculpt object by sourceStrokeIDs
+    /// OVERLAP (per the design spec), not exact set equality: real
+    /// re-selections routinely differ by a stroke or two (the smart selector
+    /// clusters by proximity, a lasso grabs a doodle beside the shape), and
+    /// demanding equality silently downgraded almost every re-entry to a
+    /// fresh lift — re-inferring from already-baked ink and compounding
+    /// degradation on every rotate→bake→re-select cycle. Ties resolve to the
+    /// largest overlap, then the most recent object (stable for equal ids).
+    nonisolated static func resolveSessionObject(selection: Set<UUID>,
+                                                 objects: [SculptObject]) -> SculptObject? {
+        objects.enumerated()
+            .map { (index: $0, object: $1,
+                    overlap: $1.sourceStrokeIDs.intersection(selection).count) }
+            .filter { $0.overlap > 0 }
+            .max { ($0.overlap, $0.index) < ($1.overlap, $1.index) }?
+            .object
+    }
+
     private func startSession() {
         // Idempotent: a spurious double onAppear must never double-infer
         // or double-append.
         guard activeObjectID == nil, !isInferring else { return }
         let strokeIDs = Set(sourceStrokes.map(\.id))
 
-        if let exact = sculptObjects.first(where: { $0.sourceStrokeIDs == strokeIDs }) {
+        if let match = Self.resolveSessionObject(selection: strokeIDs,
+                                                 objects: sculptObjects) {
             // Re-entry: the object already carries its surface ink and
             // persisted orientation; the baked 2D ink was produced from exactly
             // that state, so rendering it is registered by construction.
-            sessionOrientation = exact.orientation
-            sessionScale = exact.scale
-            activeObjectID = exact.id
-            // Source strokes that never lifted (persisted on the object) must
-            // stay visible and survive commit untouched.
-            onSourceStrokesLifted(exact.unliftedStrokeIDs)
+            sessionOrientation = match.orientation
+            sessionScale = match.scale
+            activeObjectID = match.id
+            // Hide the object's whole lifted ink (even ink the selection
+            // missed — commit rebakes all of it, so leaving it visible would
+            // desync the stores). Keep visible: strokes that never lifted
+            // (persisted on the object) AND selected strokes that don't
+            // belong to the object — both stay ordinary flat ink and carry
+            // through commit untouched (commit also folds them into the
+            // object's next identity, so selecting the same group again
+            // re-enters even more reliably).
+            onSourceStrokesResolved(
+                match.sourceStrokeIDs.subtracting(match.unliftedStrokeIDs),
+                match.unliftedStrokeIDs.union(strokeIDs.subtracting(match.sourceStrokeIDs))
+            )
             return
         }
 
@@ -257,7 +289,8 @@ struct Edit25DOverlay: View {
                 // sculptObjects didSet -> prebuildBVHs() builds the BVH
                 // asynchronously on mount instead.
                 isInferring = false
-                onSourceStrokesLifted(lift.unliftedStrokeIDs)
+                onSourceStrokesResolved(strokeIDs.subtracting(lift.unliftedStrokeIDs),
+                                        lift.unliftedStrokeIDs)
             }
         }
     }

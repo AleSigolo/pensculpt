@@ -304,7 +304,7 @@ struct DrawingScreen: View {
             onCanvasStroke: handleEditCanvasStroke,
             onInferenceFailed: cancelEditSession,
             onSessionInvalidated: dismantleEditSession,
-            onSourceStrokesLifted: handleSourceStrokesLifted
+            onSourceStrokesResolved: handleSourceStrokesResolved
         )
         .ignoresSafeArea()
         .transition(.opacity)
@@ -320,18 +320,19 @@ struct DrawingScreen: View {
     }
 
     /// The mesh is ready (fresh lift) or already present (re-entry): hide
-    /// the PK ink of every stroke that lifted, in the same main-actor turn
-    /// that mounts the mesh view — until now the ink stayed visible as the
-    /// lift placeholder. Strokes that couldn't lift are simply never hidden:
-    /// they stay ordinary flat strokes and survive commit untouched.
-    /// canvas.strokes keeps the originals until commit.
-    private func handleSourceStrokesLifted(_ unlifted: Set<UUID>) {
+    /// the PK ink riding the mesh, in the same main-actor turn that mounts
+    /// the mesh view — until then the ink stays visible as the lift
+    /// placeholder. `hidden` comes from the overlay (on re-entry it covers
+    /// the object's whole lifted ink, which can be wider than the
+    /// selection); `unlifted` strokes are never hidden and survive commit
+    /// untouched. canvas.strokes keeps the originals until commit.
+    private func handleSourceStrokesResolved(_ hidden: Set<UUID>, _ unlifted: Set<UUID>) {
         unliftedSourceIDs = unlifted
         // After the hide below, pkDrawing is no longer index-parallel with
         // canvas.strokes, so a spurious second report must not re-pair
         // indices. (The overlay reports exactly once per session.)
         guard hiddenPKStrokes.isEmpty else { return }
-        let liftedIDs = Set(vm.editSessionStrokes.map(\.id)).subtracting(unlifted)
+        let liftedIDs = hidden
         guard !liftedIDs.isEmpty else { return }
         var kept: [PKStroke] = []
         var removed: [(index: Int, id: UUID, stroke: PKStroke)] = []

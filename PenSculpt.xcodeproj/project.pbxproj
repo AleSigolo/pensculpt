@@ -21,6 +21,7 @@
 		302312306BB23F6D712057DD /* SculptReopenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F45481EB403A5B9251F8CF76 /* SculptReopenTests.swift */; };
 		310E76253D418B5F5D4D1D5D /* StrokeClustering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00C8D1622658F5E05DB8EA67 /* StrokeClustering.swift */; };
 		34C45F8BA01561E56E72392B /* MetalCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEB8C5E99B887166FC1FE5C /* MetalCanvasView.swift */; };
+		38D38CA71EAF8A509F4D733B /* Edit25DOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98B163EF36E1CFE711DB34D1 /* Edit25DOverlayTests.swift */; };
 		3A15D27C34C071C9072487BD /* StrokeLifter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24001FE387F97AA330EC4F7D /* StrokeLifter.swift */; };
 		3ACA72B0A900E98DAF41AFE4 /* DrawingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 864F74CCF32E8B0483123CC0 /* DrawingScreen.swift */; };
 		477ADC079D56B3B0B214B198 /* AppMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F1623E98B6462D9F16D94B5 /* AppMode.swift */; };
@@ -123,6 +124,7 @@
 		8D8D346B753BC55596B1529C /* SculptConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SculptConfig.swift; sourceTree = "<group>"; };
 		8F1623E98B6462D9F16D94B5 /* AppMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMode.swift; sourceTree = "<group>"; };
 		98A46D7C5EF099EB2F6B8492 /* PenSculpt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PenSculpt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		98B163EF36E1CFE711DB34D1 /* Edit25DOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Edit25DOverlayTests.swift; sourceTree = "<group>"; };
 		9997687C31904A1949E3F1A2 /* PenSculptApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PenSculptApp.swift; sourceTree = "<group>"; };
 		9A9BD3149A93DB238426BA43 /* SculptRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SculptRenderer.swift; sourceTree = "<group>"; };
 		9CCD06DBCB1FE6874F66FDD0 /* PipelineDiagnosticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PipelineDiagnosticTests.swift; sourceTree = "<group>"; };
@@ -275,6 +277,7 @@
 				2784E41280E22EE54A1D6507 /* CanvasViewTests.swift */,
 				DC097CDD13A4A13A9106C17A /* DrawingScreenReconcileTests.swift */,
 				B7D2183DA7353D9752EE7472 /* DrawingViewModelTests.swift */,
+				98B163EF36E1CFE711DB34D1 /* Edit25DOverlayTests.swift */,
 				552F910B27329E23CAFD78C7 /* EditInputRouterTests.swift */,
 				6DBFB9D1C740A5A34B847CB8 /* InferencePipelineTests.swift */,
 				290CED964442B54D9C25EB4C /* LassoSelectionTests.swift */,
@@ -395,6 +398,7 @@
 				64F64704219AF451A4C00E39 /* CanvasViewTests.swift in Sources */,
 				BE7F29B6C604651CF28BA2FC /* DrawingScreenReconcileTests.swift in Sources */,
 				C498947EDD9EB38BD583C4DD /* DrawingViewModelTests.swift in Sources */,
+				38D38CA71EAF8A509F4D733B /* Edit25DOverlayTests.swift in Sources */,
 				59C5CED2B0F1B958F5CD35A9 /* EditInputRouterTests.swift in Sources */,
 				6C115DA4E37B116CD8268A24 /* InferencePipelineTests.swift in Sources */,
 				52627E6251CD7270934E142C /* LassoSelectionTests.swift in Sources */,
