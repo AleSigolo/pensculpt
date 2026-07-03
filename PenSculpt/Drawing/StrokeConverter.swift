@@ -3,28 +3,46 @@ import UIKit
 
 enum StrokeConverter {
 
+    /// Sample spacing (points) when converting a PK spline to the model
+    /// polyline. Matches the inflation grid (SculptConfig.gridSpacing).
+    static let interpolationSpacing: CGFloat = 2
+
     static func convert(_ pkStroke: PKStroke) -> Stroke {
         let path = pkStroke.path
         var points: [StrokePoint] = []
-        points.reserveCapacity(path.count)
 
-        for i in 0..<path.count {
-            let p = path[i]
-            points.append(StrokePoint(
-                location: p.location,
-                // Pressure canonically stores rendered-ink-width / widthPerPressure
-                // so PK → internal → PK round-trips the width exactly. Raw force
-                // is unreliable for finger input (always 0) and ignores the pen
-                // width setting.
-                pressure: p.size.width / CGFloat(StrokeLifter.widthPerPressure),
-                tilt: p.altitude,
-                azimuth: p.azimuth,
-                timestamp: p.timeOffset
-            ))
+        // PencilKit renders a smooth spline through its control points, whose
+        // spacing depends on drawing speed — a slow curve can span 100+pt
+        // between controls. Everything downstream (3D lift, contour
+        // inference, selection distances, the Metal stroke strip) consumes
+        // the model as a POLYLINE, so sample the rendered curve; raw control
+        // points leave lifted ink angular and its width jittery.
+        if path.count >= 2 {
+            for p in path.interpolatedPoints(by: .distance(Self.interpolationSpacing)) {
+                points.append(strokePoint(from: p))
+            }
+        } else {
+            for i in 0..<path.count {
+                points.append(strokePoint(from: path[i]))
+            }
         }
 
         let color = colorFromPKInk(pkStroke.ink)
         return Stroke(points: points, color: color)
+    }
+
+    private static func strokePoint(from p: PKStrokePoint) -> StrokePoint {
+        StrokePoint(
+            location: p.location,
+            // Pressure canonically stores rendered-ink-width / widthPerPressure
+            // so PK → internal → PK round-trips the width exactly. Raw force
+            // is unreliable for finger input (always 0) and ignores the pen
+            // width setting.
+            pressure: p.size.width / CGFloat(StrokeLifter.widthPerPressure),
+            tilt: p.altitude,
+            azimuth: p.azimuth,
+            timestamp: p.timeOffset
+        )
     }
 
     static func convertAll(_ drawing: PKDrawing) -> [Stroke] {
