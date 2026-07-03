@@ -45,6 +45,38 @@ final class SculptRendererTests: XCTestCase {
                       "replaceMesh must schedule a rebuild of the buffers it invalidates")
     }
 
+    /// Deform runs on every input event of the gesture; clearing the vertex
+    /// buffer and waiting for the async prebuild made the mesh invisible for
+    /// the whole gesture (manual check 11: "mesh disappears when deforming,
+    /// only the 2D strokes remain"). The buffer must be refreshed in place.
+    func testDeformKeepsMeshBuffersAlive() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("Metal unavailable in this environment")
+        }
+        let renderer = try XCTUnwrap(SculptRenderer(device: device))
+        let obj = SculptObject(mesh: makeMesh(z: 5), sourceStrokeIDs: [])
+        let originalVertices = obj.mesh.vertices
+        renderer.sculptObjects = [obj]
+        renderer.activeObjectID = obj.id
+        renderer.editPivot = SIMD3(50, -50, 0)
+        // Edit sessions start at the identity orientation (the renderer's
+        // default rotation is the legacy workspace camera tilt).
+        renderer.rotation = simd_quatf(vector: SIMD4(0, 0, 0, 1))
+        renderer.cacheBVH(MeshBVH(mesh: obj.mesh), for: obj.id)
+        XCTAssertTrue(waitForBuffers(renderer, obj.id, timeout: 3))
+
+        renderer.deformMesh(at: CGPoint(x: 60, y: 40),
+                            viewSize: CGSize(width: 1024, height: 1366),
+                            strength: 5, radius: 100,
+                            screenVelocity: CGPoint(x: 0, y: 30))
+
+        XCTAssertNotEqual(renderer.sculptObjects[0].mesh.vertices.map(\.position),
+                          originalVertices.map(\.position),
+                          "fixture problem: the deform ray must actually hit the mesh")
+        XCTAssertTrue(renderer.hasMeshBuffers(for: obj.id),
+                      "deform must refresh the vertex buffer in place, not orphan it")
+    }
+
     func testOrthographicProjectionMapsCorners() {
         let mvp = SculptRenderer.orthographicProjection(
             left: -100, right: 100,

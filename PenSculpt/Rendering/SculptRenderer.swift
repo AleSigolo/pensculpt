@@ -487,6 +487,31 @@ class SculptRenderer: NSObject, MTKViewDelegate {
         }
     }
 
+    /// Synchronously rewrite an object's vertex buffer after an in-place
+    /// vertex mutation. Deform/smooth run on every input event of a gesture:
+    /// the clear-and-async-prebuild path leaves the id bufferless for the
+    /// whole gesture, so the mesh vanishes while (and after) sculpting.
+    /// Topology is unchanged by those tools, so the buffer is same-size and
+    /// can be overwritten; if it's missing or the size changed, fall back to
+    /// the async prebuild.
+    private func refreshVertexBufferInPlace(for objectID: UUID) {
+        guard let obj = sculptObjects.first(where: { $0.id == objectID }) else { return }
+        let expectedLength = obj.mesh.vertices.count * 6 * MemoryLayout<Float>.stride
+        guard let buffers = bufferCache[objectID],
+              buffers.vertex.length == expectedLength else {
+            bufferCache.removeValue(forKey: objectID)
+            prebuildBuffers()
+            return
+        }
+        var vertexData: [Float] = []
+        vertexData.reserveCapacity(obj.mesh.vertices.count * 6)
+        for v in obj.mesh.vertices {
+            vertexData.append(contentsOf: [v.position.x, v.position.y, v.position.z])
+            vertexData.append(contentsOf: [v.normal.x, v.normal.y, v.normal.z])
+        }
+        buffers.vertex.contents().copyMemory(from: vertexData, byteCount: expectedLength)
+    }
+
     func replaceMesh(objectID: UUID, mesh: Mesh, surfaceStrokes: [SurfaceStroke]? = nil) {
         guard let idx = sculptObjects.firstIndex(where: { $0.id == objectID }) else { return }
         // Invalidate BEFORE mutating: the sculptObjects didSet only prebuilds
@@ -599,7 +624,7 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
         if modified {
             sculptObjects[idx].mesh.vertices = vertices
-            bufferCache.removeValue(forKey: sculptObjects[idx].id)
+            refreshVertexBufferInPlace(for: sculptObjects[idx].id)
         }
 
         // Also displace surface stroke points so they move with the mesh
@@ -688,7 +713,7 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
         if modified {
             sculptObjects[idx].mesh.vertices = vertices
-            bufferCache.removeValue(forKey: activeID)
+            refreshVertexBufferInPlace(for: activeID)
         }
     }
 
