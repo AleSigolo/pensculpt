@@ -26,8 +26,18 @@ enum StrokeLifter {
     /// dropped. Source strokes contributing zero segments are reported in
     /// `unliftedStrokeIDs` so commit can carry them through unmodified
     /// instead of deleting them.
+    ///
+    /// A miss is retried within `missTolerance` points of the ink position
+    /// before splitting: the inflation contour is a simplified polygon that
+    /// dips inside the ink centerline on curves, so border ink grazes just
+    /// outside the silhouette and a strict cast shreds it into dropped
+    /// sub-2-point segments (dashed lift). The default is half the
+    /// rasterized contour ink width (`contourStrokeWidth` 8 / 2). Rescued
+    /// points keep their canvas XY — only depth comes from the nearby
+    /// surface — so lift registration stays exact.
     static func lift(_ strokes: [Stroke], bvh: MeshBVH,
-                     offset: Float, maxTJump: Float = 50)
+                     offset: Float, maxTJump: Float = 50,
+                     missTolerance: Float = 4)
         -> (lifted: [SurfaceStroke], unliftedStrokeIDs: Set<UUID>) {
         let direction = SIMD3<Float>(0, 0, -1)
         var lifted: [SurfaceStroke] = []
@@ -52,15 +62,17 @@ enum StrokeLifter {
             }
 
             for sp in stroke.points {
-                let origin = SIMD3<Float>(Float(sp.location.x), Float(-sp.location.y), 4096)
-                guard let (t, _) = bvh.raycast(origin: origin, direction: direction) else {
+                let x = Float(sp.location.x)
+                let y = Float(-sp.location.y)
+                guard let t = raycastWithTolerance(x: x, y: y, bvh: bvh,
+                                                   tolerance: missTolerance) else {
                     flushSegment()
                     continue
                 }
                 if !points.isEmpty && abs(t - lastT) >= maxTJump {
                     flushSegment()
                 }
-                points.append(origin + t * direction - direction * offset)
+                points.append(SIMD3(x, y, 4096 - t + offset))
                 widths.append(Float(sp.pressure) * widthPerPressure)
                 lastT = t
             }
@@ -69,6 +81,34 @@ enum StrokeLifter {
             if !producedSegment { unliftedStrokeIDs.insert(stroke.id) }
         }
         return (lifted, unliftedStrokeIDs)
+    }
+
+    /// −z raycast at canvas-world (x, y); on a miss, retries in rings of
+    /// growing radius (¼, ½, then full `tolerance`) around the point before
+    /// giving up. Returns the hit distance t. Deterministic: fixed direction
+    /// order, nearest ring first.
+    private static func raycastWithTolerance(x: Float, y: Float, bvh: MeshBVH,
+                                             tolerance: Float) -> Float? {
+        let direction = SIMD3<Float>(0, 0, -1)
+        if let (t, _) = bvh.raycast(origin: SIMD3(x, y, 4096), direction: direction) {
+            return t
+        }
+        guard tolerance > 0 else { return nil }
+        let diag: Float = 0.70710678
+        let dirs: [SIMD2<Float>] = [
+            SIMD2(1, 0), SIMD2(-1, 0), SIMD2(0, 1), SIMD2(0, -1),
+            SIMD2(diag, diag), SIMD2(-diag, diag),
+            SIMD2(diag, -diag), SIMD2(-diag, -diag),
+        ]
+        for radius in [tolerance * 0.25, tolerance * 0.5, tolerance] {
+            for d in dirs {
+                let origin = SIMD3<Float>(x + d.x * radius, y + d.y * radius, 4096)
+                if let (t, _) = bvh.raycast(origin: origin, direction: direction) {
+                    return t
+                }
+            }
+        }
+        return nil
     }
 
     static func bake(_ surfaceStrokes: [SurfaceStroke], orientation: simd_quatf,

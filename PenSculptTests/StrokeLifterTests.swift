@@ -107,6 +107,38 @@ final class StrokeLifterTests: XCTestCase {
         XCTAssertEqual(lifted[1].points[1].x, 80, accuracy: 0.01)
     }
 
+    func testLiftRescuesHairlineMissesNearTheSilhouette() {
+        // Mesh spans x 10...90; the middle ink point sits 2pt outside it —
+        // like border ink weaving outside the simplified inflation contour
+        // on a curve. It must lift (no dashed gaps), keeping its canvas
+        // position, with depth taken from the nearby surface.
+        let q = quad(xRange: 10...90)
+        let mesh = Mesh(vertices: q.vertices, faces: q.faces)
+        let stroke = makeStroke([CGPoint(x: 12, y: 50), CGPoint(x: 8, y: 50),
+                                 CGPoint(x: 14, y: 50)])
+        let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
+
+        XCTAssertEqual(lifted.count, 1, "hairline miss must not split the stroke")
+        XCTAssertTrue(unlifted.isEmpty)
+        XCTAssertEqual(lifted[0].points.count, 3)
+        XCTAssertEqual(lifted[0].points[1].x, 8, accuracy: 0.01)
+        XCTAssertEqual(lifted[0].points[1].y, -50, accuracy: 0.01)
+        XCTAssertEqual(lifted[0].points[1].z, 5.5, accuracy: 0.01)
+    }
+
+    func testLiftToleranceStillDropsClearMisses() {
+        // 10pt outside the mesh is beyond the hairline tolerance: the point
+        // stays dropped and its 1-point neighbours can't form segments.
+        let q = quad(xRange: 10...90)
+        let mesh = Mesh(vertices: q.vertices, faces: q.faces)
+        let stroke = makeStroke([CGPoint(x: 12, y: 50), CGPoint(x: 0, y: 50),
+                                 CGPoint(x: 14, y: 50)])
+        let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
+
+        XCTAssertTrue(lifted.isEmpty)
+        XCTAssertEqual(unlifted, [stroke.id])
+    }
+
     func testLiftReportsFullyMissingStrokeAsUnlifted() {
         let mesh = makeFlatMesh()
         let stroke = makeStroke([CGPoint(x: 500, y: 500), CGPoint(x: 600, y: 600)])
