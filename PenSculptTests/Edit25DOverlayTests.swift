@@ -60,4 +60,23 @@ final class Edit25DOverlayTests: XCTestCase {
         let obj = object(with: [UUID()])
         XCTAssertNil(resolve([], [obj]))
     }
+
+    func testUnliftedOnlyOverlapDoesNotReenter() {
+        // A stray dot selected together with a shape once: it never lifted,
+        // but commit folded it into the object's identity. Selecting ONLY
+        // the dot later must NOT re-lift the whole shape — flat carried-
+        // through ink doesn't identify the object, only ink that actually
+        // rides the mesh does.
+        let lifted = [UUID(), UUID()]
+        let dot = UUID()
+        var obj = object(with: lifted + [dot])
+        obj.unliftedStrokeIDs = [dot]
+
+        XCTAssertNil(resolve([dot], [obj]),
+                     "an unlifted-only selection must go to fresh inference (and its toast)")
+        XCTAssertEqual(resolve(Set([lifted[0]]), [obj])?.id, obj.id,
+                       "lifted ink still resolves the object")
+        XCTAssertEqual(resolve(Set([lifted[0], dot]), [obj])?.id, obj.id,
+                       "mixed selections still resolve via their lifted part")
+    }
 }

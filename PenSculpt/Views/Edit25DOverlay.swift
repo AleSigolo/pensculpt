@@ -216,11 +216,17 @@ struct Edit25DOverlay: View {
     /// fresh lift — re-inferring from already-baked ink and compounding
     /// degradation on every rotate→bake→re-select cycle. Ties resolve to the
     /// largest overlap, then the most recent object (stable for equal ids).
+    ///
+    /// Only ink that actually rides the mesh identifies the object:
+    /// unlifted strokes are flat carried-through ink (a stray dot that once
+    /// shared a selection with the shape), and letting them match would
+    /// re-lift the whole object when the user selects just the stray.
     nonisolated static func resolveSessionObject(selection: Set<UUID>,
                                                  objects: [SculptObject]) -> SculptObject? {
         objects.enumerated()
             .map { (index: $0, object: $1,
-                    overlap: $1.sourceStrokeIDs.intersection(selection).count) }
+                    overlap: $1.sourceStrokeIDs.subtracting($1.unliftedStrokeIDs)
+                        .intersection(selection).count) }
             .filter { $0.overlap > 0 }
             .max { ($0.overlap, $0.index) < ($1.overlap, $1.index) }?
             .object
