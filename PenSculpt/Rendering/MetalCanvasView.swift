@@ -386,6 +386,17 @@ struct MetalCanvasView: UIViewRepresentable {
                    let idx = renderer.sculptObjects.firstIndex(where: { $0.id == activeID }) {
                     let obj = renderer.sculptObjects[idx]
                     onMeshDeformed?(activeID, obj.mesh, obj.surfaceStrokes)
+                    // The gesture moved vertices but hitTest still raycasts
+                    // the pre-gesture BVH: ink drawn on a fresh bump lands on
+                    // the OLD surface — buried inside the bump, so the stroke
+                    // renders gappy on top of it. Rebuild off-main (same
+                    // accepted skip-frame window as the expand-dismiss
+                    // refresh; manual check 12 covers it).
+                    let mesh = obj.mesh
+                    Task.detached { [weak renderer] in
+                        let bvh = MeshBVH(mesh: mesh)
+                        await MainActor.run { renderer?.cacheBVH(bvh, for: activeID) }
+                    }
                 }
             }
         }
