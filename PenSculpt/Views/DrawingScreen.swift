@@ -301,44 +301,47 @@ struct DrawingScreen: View {
         originalIndex - stillHiddenOriginalIndices.filter { $0 < originalIndex }.count
     }
 
-    /// Some selected strokes couldn't be lifted onto the mesh (e.g. ink the
-    /// lasso caught that lies off the inferred shape). Un-hide their PK ink —
+    /// The mesh is ready (fresh lift) or already present (re-entry): hide
+    /// the PK ink of every stroke that lifted, in the same main-actor turn
+    /// that mounts the mesh view — until now the ink stayed visible as the
+    /// lift placeholder. Strokes that couldn't lift are simply never hidden:
     /// they stay ordinary flat strokes and survive commit untouched.
+    /// canvas.strokes keeps the originals until commit.
     private func handleSourceStrokesLifted(_ unlifted: Set<UUID>) {
         unliftedSourceIDs = unlifted
-        guard !unlifted.isEmpty else { return }
-        let toRestore = hiddenPKStrokes.filter { unlifted.contains($0.id) }
-        hiddenPKStrokes.removeAll { unlifted.contains($0.id) }
-        let stillHidden = hiddenPKStrokes.map(\.index)
-        var strokes = pkDrawing.strokes
-        for entry in toRestore.sorted(by: { $0.index < $1.index }) {
-            let idx = Self.parityInsertionIndex(originalIndex: entry.index,
-                                                stillHiddenOriginalIndices: stillHidden)
-            strokes.insert(entry.stroke, at: min(idx, strokes.count))
-        }
-        pkDrawing = PKDrawing(strokes: strokes)
-    }
-
-    /// Snapshot the selection and hide its PK ink so the lifted mesh replaces
-    /// it visually. canvas.strokes keeps the originals until commit.
-    private func beginEditSession() {
-        // Undo of this session's commit must restore the pre-session world,
-        // not a commit-time snapshot that already carries the session's
-        // orientation/scale writes.
-        preSessionObjects = sculptObjects
-        let ids = vm.selectedStrokeIDs
+        // After the hide below, pkDrawing is no longer index-parallel with
+        // canvas.strokes, so a spurious second report must not re-pair
+        // indices. (The overlay reports exactly once per session.)
+        guard hiddenPKStrokes.isEmpty else { return }
+        let liftedIDs = Set(vm.editSessionStrokes.map(\.id)).subtracting(unlifted)
+        guard !liftedIDs.isEmpty else { return }
         var kept: [PKStroke] = []
         var removed: [(index: Int, id: UUID, stroke: PKStroke)] = []
         for (i, pk) in pkDrawing.strokes.enumerated() {
-            if i < vm.canvas.strokes.count, ids.contains(vm.canvas.strokes[i].id) {
+            if i < vm.canvas.strokes.count, liftedIDs.contains(vm.canvas.strokes[i].id) {
                 removed.append((index: i, id: vm.canvas.strokes[i].id, stroke: pk))
             } else {
                 kept.append(pk)
             }
         }
         hiddenPKStrokes = removed
-        unliftedSourceIDs = []
         pkDrawing = PKDrawing(strokes: kept)
+    }
+
+    /// Snapshot pre-session state. The selection's PK ink intentionally
+    /// stays VISIBLE while inference runs — it is the lift placeholder
+    /// (spec: "ink lifts with a ghost placeholder until the mesh arrives");
+    /// handleSourceStrokesLifted hides it when the mesh mounts. Runs before
+    /// the overlay's onAppear (onChange fires within the same transaction
+    /// that inserts the overlay), so the resets here can't clobber a
+    /// re-entry's hide.
+    private func beginEditSession() {
+        // Undo of this session's commit must restore the pre-session world,
+        // not a commit-time snapshot that already carries the session's
+        // orientation/scale writes.
+        preSessionObjects = sculptObjects
+        hiddenPKStrokes = []
+        unliftedSourceIDs = []
     }
 
     /// Teardown for an EXTERNALLY invalidated session: an undo restored
@@ -355,7 +358,9 @@ struct DrawingScreen: View {
         withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
     }
 
-    /// Inference failed: restore the hidden ink exactly as it was.
+    /// Inference failed: restore any hidden ink exactly as it was. (With the
+    /// deferred hide, failure normally happens before anything was hidden —
+    /// the loop is then a no-op and the visible ink was never touched.)
     private func cancelEditSession() {
         var strokes = pkDrawing.strokes
         for entry in hiddenPKStrokes.sorted(by: { $0.index < $1.index }) {
@@ -412,8 +417,8 @@ struct DrawingScreen: View {
         let insertedBaked = bakedStrokes.filter { $0.points.count > 1 }
 
         // Remove lifted source strokes from the model (their PK ink is already
-        // hidden). Unlifted ones were never removed from pkDrawing's visible
-        // set (handleSourceStrokesLifted restored them) and stay in canvas.
+        // hidden). Unlifted ones were never hidden from pkDrawing's visible
+        // set (handleSourceStrokesLifted skips them) and stay in canvas.
         if let idx = sculptObjects.firstIndex(where: { $0.id == objectID }) {
             for id in sculptObjects[idx].sourceStrokeIDs where !unliftedSourceIDs.contains(id) {
                 vm.removeStroke(id: id)
