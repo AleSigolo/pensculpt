@@ -123,7 +123,13 @@ struct Edit25DOverlay: View {
                 }
                 .disabled(activeObjectID == nil)
             }
-            .padding()
+            // The overlay ignores safe areas, and the document nav bar
+            // (owned by DocumentGroup — SwiftUI's toolbar(.hidden) doesn't
+            // reach it) draws over the top strip: its trailing buttons land
+            // exactly on these controls and eat their taps. Clear the whole
+            // status-bar + nav-bar band.
+            .padding(.trailing, 16)
+            .padding(.top, 96)
         }
         .overlay(alignment: .bottom) {
             BrushControls(brushSize: $brushSize, brushOpacity: $brushOpacity,
