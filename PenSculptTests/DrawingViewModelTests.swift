@@ -290,6 +290,75 @@ final class DrawingViewModelTests: XCTestCase {
         XCTAssertFalse(vm.hasSelection)
     }
 
+    // MARK: - Edit session strokes (ordering-proof source-stroke handoff)
+
+    // The overlay is constructed by the SAME body evaluation that first sees
+    // appMode == .edit, so the session's source strokes must already be
+    // available at the moment appMode flips — a parent onChange that copies
+    // them afterwards is too late (the overlay's onAppear captures the empty
+    // initial value; root cause of the "Couldn't lift that selection" bug).
+
+    func testLassoCommitSetsEditSessionStrokesBeforeModeFlips() {
+        let (vm, stroke) = makeVMWithStroke()
+        vm.appMode = .select
+
+        // Observation fires on willSet of appMode: capture what the session
+        // strokes look like at the instant the mode flips.
+        let captured = LockedBox<[Stroke]?>(nil)
+        withObservationTracking {
+            _ = vm.appMode
+        } onChange: {
+            captured.value = vm.editSessionStrokes
+        }
+
+        vm.handleLassoCompleted(polygon: [
+            CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0),
+            CGPoint(x: 100, y: 100), CGPoint(x: 0, y: 100)
+        ])
+
+        XCTAssertEqual(vm.appMode, .edit)
+        XCTAssertEqual(vm.editSessionStrokes.map(\.id), [stroke.id])
+        XCTAssertEqual(captured.value?.map(\.id), [stroke.id],
+                       "editSessionStrokes must be populated BEFORE appMode flips to .edit")
+    }
+
+    func testSmartSelectCommitSetsEditSessionStrokesBeforeModeFlips() {
+        let (vm, stroke) = makeVMWithStroke()
+        vm.appMode = .select
+
+        let captured = LockedBox<[Stroke]?>(nil)
+        withObservationTracking {
+            _ = vm.appMode
+        } onChange: {
+            captured.value = vm.editSessionStrokes
+        }
+
+        vm.handleSmartSelectCommitted(strokeIDs: [stroke.id])
+
+        XCTAssertEqual(vm.appMode, .edit)
+        XCTAssertEqual(captured.value?.map(\.id), [stroke.id],
+                       "editSessionStrokes must be populated BEFORE appMode flips to .edit")
+    }
+
+    func testExitEditModeClearsEditSessionStrokes() {
+        let (vm, stroke) = makeVMWithStroke()
+        vm.appMode = .select
+        vm.handleSmartSelectCommitted(strokeIDs: [stroke.id])
+        XCTAssertFalse(vm.editSessionStrokes.isEmpty)
+
+        vm.exitEditMode()
+        XCTAssertTrue(vm.editSessionStrokes.isEmpty)
+    }
+
+    func testEmptyLassoCommitLeavesEditSessionStrokesEmpty() {
+        let (vm, _) = makeVMWithStroke()
+        vm.appMode = .select
+        vm.handleLassoCompleted(polygon: [
+            CGPoint(x: 500, y: 500), CGPoint(x: 510, y: 500), CGPoint(x: 510, y: 510)
+        ])
+        XCTAssertTrue(vm.editSessionStrokes.isEmpty)
+    }
+
     func testPencilDoubleTapIgnoredInEditMode() {
         let (vm, stroke) = makeVMWithStroke()
         vm.appMode = .select
@@ -298,6 +367,18 @@ final class DrawingViewModelTests: XCTestCase {
 
         vm.handlePencilDoubleTap()
         XCTAssertEqual(vm.selectedTool, .pen, "Double-tap should be ignored in edit mode")
+    }
+}
+
+/// Thread-safe box for values captured from Observation's Sendable onChange
+/// closure (fires synchronously on willSet in these tests).
+private final class LockedBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }
 

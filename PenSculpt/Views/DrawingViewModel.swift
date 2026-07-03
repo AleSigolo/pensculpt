@@ -14,6 +14,14 @@ class DrawingViewModel {
     var selectedStrokeIDs: Set<UUID> = []
     var activeStrategy: SelectionStrategyKind = .lasso
 
+    /// Source strokes for the 2.5D edit session, captured synchronously at
+    /// the moment a selection commits — BEFORE appMode flips to .edit. The
+    /// Edit25DOverlay is constructed by the same body evaluation that first
+    /// sees .edit, and SwiftUI runs onChange handlers only after that
+    /// evaluation, so a parent-side copy (onChange → @State) hands the
+    /// overlay an empty array and inference fails. Cleared on session exit.
+    private(set) var editSessionStrokes: [Stroke] = []
+
     /// Tracks the last eraser type for pencil double-tap toggle.
     private(set) var lastEraserType: DrawingTool = .eraser
 
@@ -54,6 +62,7 @@ class DrawingViewModel {
         appMode = .draw
         lassoPoints = []
         selectedStrokeIDs = []
+        editSessionStrokes = []
         activeStrategy = .lasso
     }
 
@@ -76,7 +85,10 @@ class DrawingViewModel {
             strokes: canvas.strokes,
             polygon: polygon
         )
-        if hasSelection { appMode = .edit }
+        if hasSelection {
+            editSessionStrokes = selectedStrokes
+            appMode = .edit
+        }
     }
 
     func activateSmartStrategy() {
@@ -86,7 +98,10 @@ class DrawingViewModel {
     func handleSmartSelectCommitted(strokeIDs: Set<UUID>) {
         guard appMode == .select else { return }
         selectedStrokeIDs = strokeIDs
-        if hasSelection { appMode = .edit }
+        if hasSelection {
+            editSessionStrokes = selectedStrokes
+            appMode = .edit
+        }
     }
 
     /// Leaves 2.5D edit mode and returns to drawing with a clean selection state.

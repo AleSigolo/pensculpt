@@ -10,7 +10,6 @@ struct DrawingScreen: View {
     @State private var drawingSyncTask: Task<Void, Never>?
     @State private var viewBridge = ViewBridge()
     @State private var hiddenPKStrokes: [(index: Int, id: UUID, stroke: PKStroke)] = []
-    @State private var editSourceStrokes: [Stroke] = []
     @State private var unliftedSourceIDs: Set<UUID> = []
     @State private var preSessionObjects: [SculptObject] = []
     @State private var showInferenceFailedToast = false
@@ -274,8 +273,14 @@ struct DrawingScreen: View {
     // MARK: - 2.5D edit session
 
     private var editOverlay: some View {
+        // vm.editSessionStrokes is populated by the VM BEFORE appMode flips
+        // to .edit, so the overlay constructed by the body evaluation that
+        // first sees .edit always receives the session's strokes — unlike a
+        // parent @State copied in onChange, which runs after this evaluation
+        // (that ordering handed the overlay [] and made every fresh lift
+        // fail with the "Couldn't lift that selection" toast).
         Edit25DOverlay(
-            sourceStrokes: editSourceStrokes,
+            sourceStrokes: vm.editSessionStrokes,
             sculptObjects: $sculptObjects,
             onCommit: handleEditCommit,
             onCanvasStroke: handleEditCanvasStroke,
@@ -317,7 +322,6 @@ struct DrawingScreen: View {
     /// Snapshot the selection and hide its PK ink so the lifted mesh replaces
     /// it visually. canvas.strokes keeps the originals until commit.
     private func beginEditSession() {
-        editSourceStrokes = vm.selectedStrokes
         // Undo of this session's commit must restore the pre-session world,
         // not a commit-time snapshot that already carries the session's
         // orientation/scale writes.
@@ -346,7 +350,6 @@ struct DrawingScreen: View {
     /// and no toast: the undo's effect is already visible on the canvas.
     private func dismantleEditSession() {
         hiddenPKStrokes = []
-        editSourceStrokes = []
         unliftedSourceIDs = []
         preSessionObjects = []
         withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
@@ -360,7 +363,6 @@ struct DrawingScreen: View {
         }
         pkDrawing = PKDrawing(strokes: strokes)
         hiddenPKStrokes = []
-        editSourceStrokes = []
         unliftedSourceIDs = []
         preSessionObjects = []
         withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
@@ -450,7 +452,6 @@ struct DrawingScreen: View {
         sculptObjects.removeAll { $0.sourceStrokeIDs.isDisjoint(with: liveIDs) }
 
         hiddenPKStrokes = []
-        editSourceStrokes = []
         unliftedSourceIDs = []
         preSessionObjects = []
         withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
