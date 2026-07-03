@@ -14,6 +14,7 @@ struct CanvasView: UIViewRepresentable {
     func makeUIView(context: Context) -> PKCanvasView {
         let canvasView = PKCanvasView()
         canvasView.drawing = drawing
+        context.coordinator.resetTracking(to: canvasView.drawing)
         canvasView.tool = pkTool(for: selectedTool)
         canvasView.drawingPolicy = .pencilOnly
         canvasView.backgroundColor = .white
@@ -35,8 +36,7 @@ struct CanvasView: UIViewRepresentable {
         canvasView.isUserInteractionEnabled = isInteractive
         canvasView.tool = pkTool(for: selectedTool)
         if canvasView.drawing != drawing {
-            canvasView.drawing = drawing
-            context.coordinator.resetTracking(to: drawing)
+            context.coordinator.setDrawingProgrammatically(drawing, on: canvasView)
         }
     }
 
@@ -73,6 +73,7 @@ struct CanvasView: UIViewRepresentable {
         let parent: CanvasView
         private var previousStrokeCount = 0
         private var previousDrawing = PKDrawing()
+        private var isProgrammaticUpdate = false
 
         init(_ parent: CanvasView) {
             self.parent = parent
@@ -83,9 +84,33 @@ struct CanvasView: UIViewRepresentable {
             previousStrokeCount = drawing.strokes.count
         }
 
+        /// Assigns a drawing that came FROM the bound model (document load,
+        /// updateUIView sync). PKCanvasView re-reports the assignment through
+        /// canvasViewDrawingDidChange — sometimes synchronously inside the
+        /// setter — and that echo must never be treated as user input (the
+        /// count-jump branch would append a duplicate stroke to the model,
+        /// desyncing canvas.strokes from pkDrawing by index; every later
+        /// erase then removes the wrong model stroke and accumulates ghost
+        /// ink that selection/lift still see). Equality checks can't detect
+        /// the echo — PencilKit re-encodes assigned drawings — so the window
+        /// is flagged explicitly and tracking is reset to the canvas's own
+        /// post-assignment representation.
+        func setDrawingProgrammatically(_ drawing: PKDrawing, on canvasView: PKCanvasView) {
+            isProgrammaticUpdate = true
+            canvasView.drawing = drawing
+            isProgrammaticUpdate = false
+            resetTracking(to: canvasView.drawing)
+        }
+
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             let currentDrawing = canvasView.drawing
             let currentCount = currentDrawing.strokes.count
+
+            // Synchronous echo of a programmatic assignment (see
+            // setDrawingProgrammatically). Async echoes arrive after the
+            // flag clears, but by then tracking was reset — counts match and
+            // neither branch below fires.
+            if isProgrammaticUpdate { return }
 
             if currentCount > previousStrokeCount,
                let lastStroke = currentDrawing.strokes.last {
