@@ -196,6 +196,24 @@ struct DrawingScreen: View {
         if !drawingData.isEmpty, let loaded = try? PKDrawing(data: drawingData) {
             pkDrawing = loaded
         }
+        reconcileLoadedStores()
+    }
+
+    /// Documents written while the ghost-stroke bug was live (see the
+    /// programmatic-echo guard in CanvasView) can hold more model strokes
+    /// than visible ink. All index-paired bookkeeping (erase, lift hide,
+    /// commit parity) assumes canvas.strokes ↔ pkDrawing are 1:1, so a
+    /// mismatched document self-heals on load: the visible drawing wins,
+    /// the model is rebuilt from it, and sculpt objects whose source ink no
+    /// longer resolves are pruned (the commit-time rule). Rebuilt strokes
+    /// get fresh IDs, so healed documents lose exact-match re-entry once —
+    /// re-selecting the ink simply re-infers.
+    private func reconcileLoadedStores() {
+        guard vm.canvas.strokes.count != pkDrawing.strokes.count else { return }
+        vm.canvas.strokes = pkDrawing.strokes.map { StrokeConverter.convert($0) }
+        let liveIDs = Set(vm.canvas.strokes.map(\.id))
+        sculptObjects.removeAll { $0.sourceStrokeIDs.isDisjoint(with: liveIDs) }
+        documentCanvas = vm.canvas
     }
 
     private func debounceSyncDrawing(_ newDrawing: PKDrawing) {
