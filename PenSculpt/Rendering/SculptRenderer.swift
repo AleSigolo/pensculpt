@@ -489,10 +489,20 @@ class SculptRenderer: NSObject, MTKViewDelegate {
 
     func replaceMesh(objectID: UUID, mesh: Mesh, surfaceStrokes: [SurfaceStroke]? = nil) {
         guard let idx = sculptObjects.firstIndex(where: { $0.id == objectID }) else { return }
-        sculptObjects[idx].mesh = mesh
-        if let surfaceStrokes { sculptObjects[idx].surfaceStrokes = surfaceStrokes }
+        // Invalidate BEFORE mutating: the sculptObjects didSet only prebuilds
+        // MISSING buffers, so it must observe the id as absent. Clearing
+        // after the mutation left the id bufferless with no rebuild
+        // scheduled — the mesh stayed invisible until the next unrelated
+        // renderer sync (seconds after dismissing the expand workspace).
         bufferCache.removeValue(forKey: objectID)
         bvhCache.removeValue(forKey: objectID)
+        sculptObjects[idx].mesh = mesh
+        if let surfaceStrokes { sculptObjects[idx].surfaceStrokes = surfaceStrokes }
+    }
+
+    /// Test hook: whether GPU buffers exist for the object (private cache).
+    func hasMeshBuffers(for objectID: UUID) -> Bool {
+        bufferCache[objectID] != nil
     }
 
     func morphMesh(objectID: UUID, mesh: Mesh, surfaceStrokes: [SurfaceStroke]? = nil) {

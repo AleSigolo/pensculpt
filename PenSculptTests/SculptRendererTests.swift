@@ -1,8 +1,49 @@
 import XCTest
 import simd
+import Metal
 @testable import PenSculpt
 
 final class SculptRendererTests: XCTestCase {
+
+    private func makeMesh(z: Float) -> Mesh {
+        let vertices = [
+            MeshVertex(position: SIMD3(0, 0, z), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3(100, 0, z), normal: SIMD3(0, 0, 1)),
+            MeshVertex(position: SIMD3(100, -100, z), normal: SIMD3(0, 0, 1)),
+        ]
+        return Mesh(vertices: vertices, faces: [MeshFace(indices: SIMD3(0, 1, 2))])
+    }
+
+    private func waitForBuffers(_ renderer: SculptRenderer, _ id: UUID,
+                                timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if renderer.hasMeshBuffers(for: id) { return true }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        return renderer.hasMeshBuffers(for: id)
+    }
+
+    /// replaceMesh invalidates the object's GPU buffers; it must also get
+    /// them rebuilt. Clearing AFTER the sculptObjects mutation let the didSet
+    /// prebuild pass see the stale buffer as present and skip — the mesh
+    /// then rendered invisible until the next unrelated renderer sync
+    /// (manual check 10: fill vanished for ~5s after dismissing the expand
+    /// workspace).
+    func testReplaceMeshRebuildsBuffers() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("Metal unavailable in this environment")
+        }
+        let renderer = try XCTUnwrap(SculptRenderer(device: device))
+        let obj = SculptObject(mesh: makeMesh(z: 5), sourceStrokeIDs: [])
+        renderer.sculptObjects = [obj]
+        XCTAssertTrue(waitForBuffers(renderer, obj.id, timeout: 3),
+                      "initial prebuild must produce buffers")
+
+        renderer.replaceMesh(objectID: obj.id, mesh: makeMesh(z: 9))
+        XCTAssertTrue(waitForBuffers(renderer, obj.id, timeout: 3),
+                      "replaceMesh must schedule a rebuild of the buffers it invalidates")
+    }
 
     func testOrthographicProjectionMapsCorners() {
         let mvp = SculptRenderer.orthographicProjection(
