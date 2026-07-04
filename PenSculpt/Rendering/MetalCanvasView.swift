@@ -15,10 +15,21 @@ class ForceMTKView: MTKView {
     /// fire ~10pt after touch-down; classification (on-mesh vs off-mesh)
     /// must use the true start point, not the recognizer's location.
     var lastTouchDownLocation: CGPoint?
+    /// Peak number of simultaneous touches in the current gesture. System
+    /// gestures (three-finger undo) land here as multi-touch sequences whose
+    /// individual touches can read as clean taps — tap-to-commit must only
+    /// honor genuinely single-finger gestures.
+    private(set) var gesturePeakTouchCount = 0
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
         guard let touch = touches.first else { return }
+        let allCount = event?.allTouches?.count ?? touches.count
+        // A fresh sequence starts when these are the only touches on screen.
+        if allCount == touches.count {
+            gesturePeakTouchCount = 0
+        }
+        gesturePeakTouchCount = max(gesturePeakTouchCount, allCount)
         // A new touch sequence begins: flush leftovers from prior gestures
         // (taps, two-finger rotate/pinch) BEFORE buffering this touch, so
         // stale samples never leak into the new stroke while its head —
@@ -293,6 +304,14 @@ struct MetalCanvasView: UIViewRepresentable {
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
             guard isEditSession else { onObjectTapped?(); return }
             guard let renderer = renderer, let view = gesture.view else { return }
+            // A single finger of a system multi-touch gesture (three-finger
+            // undo) can read as a clean tap here — and would silently COMMIT
+            // the session right before the undo fires (manual check 13:
+            // "three-finger tap baked the shape"). Only a genuinely
+            // single-finger gesture may commit.
+            if let force = view as? ForceMTKView, force.gesturePeakTouchCount > 1 {
+                return
+            }
             let pointer: EditInputRouter.Pointer =
                 (view as? ForceMTKView)?.lastTouchWasPencil == true ? .pencil : .finger
             let onMesh = renderer.hitTest(screenPoint: gesture.location(in: view),
