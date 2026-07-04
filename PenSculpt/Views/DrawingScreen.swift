@@ -481,6 +481,15 @@ struct DrawingScreen: View {
         withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
 
         undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
+            // An open session's bookkeeping (hidden ink, pre-session
+            // snapshot) is invalid the moment this restore rewrites the
+            // world. The overlay's own invalidation only fires when the
+            // session's OBJECT vanishes — undoing an older commit of the
+            // SAME object keeps it alive, leaving the session floating over
+            // the restored 2D ink (double image) and duplicating strokes at
+            // its next commit. Dismantle any live session first, then
+            // restore onto a sessionless canvas.
+            if vm.appMode == .edit { dismantleEditSession() }
             vm.canvas.strokes = previousCanvasStrokes
             pkDrawing = previousPKDrawing
             sculptObjects = previousObjects
