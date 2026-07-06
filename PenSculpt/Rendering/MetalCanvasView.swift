@@ -516,9 +516,24 @@ struct MetalCanvasView: UIViewRepresentable {
         }
 
         private func pressureWidth(force: CGFloat, maxForce: CGFloat) -> Float {
-            guard maxForce > 0 else { return brushSize }
-            let normalized = Float(force / maxForce)
-            return brushSize * (0.05 + 0.95 * normalized)
+            MetalCanvasView.pressureWidth(force: force, maxForce: maxForce,
+                                          brushSize: brushSize)
         }
+    }
+}
+
+extension MetalCanvasView {
+    /// Force → rendered ink width. UITouch documents force 1.0 as "the force
+    /// of an average touch", while maximumPossibleForce is ~4.17 — real
+    /// writing lives at 0.3–1.0. Normalizing by the maximum parked every
+    /// stroke at the bottom of the old curve (5–25% of the brush), rendering
+    /// session ink hairline and erasing light passages outright. Anchor the
+    /// curve at the average touch instead: solid floor at zero force, brush
+    /// width at force 1, gentle cap when pressing hard. Devices without a
+    /// force stream (finger, simulator) report maxForce 0 → constant width.
+    static func pressureWidth(force: CGFloat, maxForce: CGFloat,
+                              brushSize: Float) -> Float {
+        guard maxForce > 0 else { return brushSize }
+        return brushSize * min(1.6, 0.7 + 0.3 * Float(force))
     }
 }

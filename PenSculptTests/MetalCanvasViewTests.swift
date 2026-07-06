@@ -5,6 +5,36 @@ import Metal
 
 final class MetalCanvasViewTests: XCTestCase {
 
+    // MARK: - Force → ink width (manual check 3: session ink drew hairline)
+
+    /// Typical Apple Pencil writing force is 0.3–1.0 while
+    /// maximumPossibleForce is ~4.17. Normalizing by the maximum parked all
+    /// real strokes at the bottom of the curve: session ink rendered at
+    /// 15–25% of the brush width and light passages vanished entirely
+    /// (0.05 × brush ≈ 0.4pt). The curve must stay solid at zero force,
+    /// sit at the brush width for an average (1.0) touch, and cap gently.
+    func testPressureWidthStaysSolidAcrossTheRealForceRange() {
+        let brush: Float = 8
+        let cases: [(force: CGFloat, minFactor: Float, maxFactor: Float)] = [
+            (0.0, 0.6, 0.85),   // stroke tails / feather touches: still solid
+            (0.5, 0.8, 1.0),    // light writing
+            (1.0, 0.95, 1.05),  // Apple's "average touch" == brush width
+            (4.17, 1.3, 1.7),   // pressing hard: gentle cap, not 4×
+        ]
+        for c in cases {
+            let w = MetalCanvasView.pressureWidth(force: c.force, maxForce: 4.17,
+                                                  brushSize: brush)
+            XCTAssertGreaterThanOrEqual(w, brush * c.minFactor, "force \(c.force)")
+            XCTAssertLessThanOrEqual(w, brush * c.maxFactor, "force \(c.force)")
+        }
+    }
+
+    func testPressureWidthWithoutForceHardwareIsTheBrushWidth() {
+        // Finger / simulator: maxForce 0 means no force stream — constant width.
+        XCTAssertEqual(MetalCanvasView.pressureWidth(force: 0, maxForce: 0,
+                                                     brushSize: 6), 6)
+    }
+
     // MARK: - ForceMTKView buffer tests
 
     func testCoalescedSamplesStartEmpty() {
