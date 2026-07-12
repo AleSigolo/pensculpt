@@ -29,6 +29,10 @@ struct SculptConfig: Codable, Equatable, Sendable {
     /// Wrap-around Laplacian smoothing passes applied to each part loop.
     var partSmoothingPasses: Int = 2
 
+    /// Smooth-max blend width (world pt) where inflated parts overlap.
+    /// 0 degrades to a hard max (paper-cutout joints).
+    var partBlendRadius: CGFloat = 10
+
     /// Camera tilt angle in radians. Higher = more top-down view.
     var cameraTilt: Float = 0.8
 

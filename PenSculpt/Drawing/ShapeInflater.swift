@@ -16,13 +16,26 @@ enum ShapeInflater {
         return SculptObject(mesh: mesh, sourceStrokeIDs: Set(strokes.map(\.id)), originRect: originRect)
     }
 
-    /// Inflates a 2D contour into a closed 3D mesh by using edge distance as depth.
+    /// Inflates 2D contours into a closed 3D mesh by using edge distance as
+    /// depth. Closed strokes each become an independently inflated part with
+    /// its own maxDist, united by a smooth max in the depth field; when no
+    /// stroke closes, the whole drawing falls back to the single Vision
+    /// contour (previous behavior).
     static func inflate(strokes: [Stroke], config: SculptConfig = .default) -> Mesh {
         let allPoints = strokes.flatMap { $0.points.map(\.location) }
-        let contour = ContourExtractor.extract(from: strokes, config: config)
-        guard contour.count >= 3 else { return Mesh() }
 
-        // Bounding box with padding
+        let parts = PartExtractor.parts(from: strokes, config: config)
+        let contours: [[CGPoint]]
+        if parts.isEmpty {
+            let contour = ContourExtractor.extract(from: strokes, config: config)
+            guard contour.count >= 3 else { return Mesh() }
+            contours = [contour]
+        } else {
+            contours = parts.map(\.contour)
+        }
+
+        // Bounding box with padding — over ALL strokes, so decoration ink
+        // stays inside the grid and originRect mapping is unchanged.
         let xs = allPoints.map(\.x), ys = allPoints.map(\.y)
         guard let minX = xs.min(), let maxX = xs.max(),
               let minY = ys.min(), let maxY = ys.max() else { return Mesh() }
@@ -36,35 +49,51 @@ enum ShapeInflater {
 
         let cols = max(2, Int((x1 - x0) / gridSpacing))
         let rows = max(2, Int((y1 - y0) / gridSpacing))
+        let cellCount = rows * cols
 
-        // Compute distance field in parallel: each row processed on a separate core.
-        // containsAndDistance merges point-in-polygon + nearest-edge into one loop.
-        var depthBuffer = [Float](repeating: 0, count: rows * cols)
-        depthBuffer.withUnsafeMutableBufferPointer { buffer in
-            DispatchQueue.concurrentPerform(iterations: rows) { row in
-                let rowOffset = row * cols
-                for col in 0..<cols {
-                    let p = CGPoint(x: x0 + CGFloat(col) * gridSpacing, y: y0 + CGFloat(row) * gridSpacing)
-                    let (inside, dist) = containsAndDistance(p, contour: contour)
-                    if inside {
-                        buffer[rowOffset + col] = Float(dist)
+        // One distance field per part; each field parallelized per-row.
+        // containsAndDistance merges point-in-polygon + nearest-edge in one loop.
+        var distanceFields = [[Float]](repeating: [], count: contours.count)
+        for (pi, contour) in contours.enumerated() {
+            var field = [Float](repeating: 0, count: cellCount)
+            field.withUnsafeMutableBufferPointer { buffer in
+                DispatchQueue.concurrentPerform(iterations: rows) { row in
+                    let rowOffset = row * cols
+                    for col in 0..<cols {
+                        let p = CGPoint(x: x0 + CGFloat(col) * gridSpacing,
+                                        y: y0 + CGFloat(row) * gridSpacing)
+                        let (inside, dist) = containsAndDistance(p, contour: contour)
+                        if inside {
+                            buffer[rowOffset + col] = Float(dist)
+                        }
                     }
                 }
             }
+            distanceFields[pi] = field
         }
 
-        let maxDist = depthBuffer.max() ?? 0
-        guard maxDist > 0 else { return Mesh() }
+        // Per-part maxDist: a thin limb keeps a thin profile while a fat
+        // torso puffs to its own scale.
+        let maxDists = distanceFields.map { $0.max() ?? 0 }
+        guard maxDists.contains(where: { $0 > 0 }) else { return Mesh() }
 
-        // Convert distance to depth using a sphere-like profile:
-        // depth = sqrt(d * (2*maxDist - d)) gives a semicircular cross-section.
+        // Spherical profile per part — depth = sqrt(d * (2*maxDist - d)) —
+        // then unite parts with a smooth max so overlaps blend at joints.
+        let blend = Float(config.partBlendRadius)
         var depths = [[Float]](repeating: [Float](repeating: 0, count: cols), count: rows)
         for row in 0..<rows {
             for col in 0..<cols {
-                let d = depthBuffer[row * cols + col]
-                if d > 0 {
-                    depths[row][col] = sqrt(d * (2 * maxDist - d))
+                let cell = row * cols + col
+                var combined: Float = 0
+                var hasDepth = false
+                for pi in 0..<distanceFields.count {
+                    let d = distanceFields[pi][cell]
+                    guard d > 0 else { continue }
+                    let depth = sqrt(d * (2 * maxDists[pi] - d))
+                    combined = hasDepth ? smoothMax(combined, depth, k: blend) : depth
+                    hasDepth = true
                 }
+                depths[row][col] = combined
             }
         }
 
@@ -76,6 +105,13 @@ enum ShapeInflater {
         return subdivideElongatedEdges(mesh, maxEdgeLength: Float(gridSpacing) * 4,
                                         boundaryVertices: boundaryVertices,
                                         passes: config.seamSubdivisionPasses)
+    }
+
+    /// Polynomial smooth maximum (the mirrored SDF smooth-min). k = 0 → hard max.
+    private static func smoothMax(_ a: Float, _ b: Float, k: Float) -> Float {
+        guard k > 0 else { return max(a, b) }
+        let h = max(0, min(1, 0.5 + 0.5 * (b - a) / k))
+        return a + (b - a) * h + k * h * (1 - h)
     }
 
     // MARK: - Combined containment + distance (single pass over contour edges)
