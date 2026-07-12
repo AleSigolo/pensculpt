@@ -5,7 +5,7 @@ import Foundation
 /// matching ShapeInflater.containsAndDistance's wrap-around convention.
 struct Part: Codable, Equatable, Sendable {
     var contour: [CGPoint]
-    let sourceStrokeID: UUID
+    let sourceStrokeID: Stroke.ID
 }
 
 enum PartExtractor {

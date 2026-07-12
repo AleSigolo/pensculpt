@@ -54,6 +54,9 @@ final class MultiPartInflationTests: XCTestCase {
         })
         let with = ShapeInflater.inflate(strokes: [circle, chord])
         let without = ShapeInflater.inflate(strokes: [circle])
+        // Exact equality is deterministic here: the chord lies inside the circle's
+        // bbox (identical grid) and the circle is the only part, so smoothMax is
+        // never called and the depth fields are bit-identical.
         XCTAssertEqual(with, without,
             "Open decoration ink inside the silhouette must not change the volume")
     }
@@ -65,8 +68,22 @@ final class MultiPartInflationTests: XCTestCase {
         let belly = circleStroke(center: CGPoint(x: 150, y: 150), radius: 15)
         let with = ShapeInflater.inflate(strokes: [torso, belly])
         let without = ShapeInflater.inflate(strokes: [torso])
+        // Exact equality is deterministic: in every belly cell the torso depth
+        // (≥ ~58) exceeds belly depth (≤ 15) by more than partBlendRadius, so
+        // smoothMax's h clamps to exactly 0 and returns the torso depth bit-exactly.
         XCTAssertEqual(with, without,
             "A shallow part inside a deep host must be absorbed, not cratered")
+    }
+
+    /// partBlendRadius = 0 degrades to a hard max — still valid geometry.
+    func testHardMaxWithZeroBlendRadius() {
+        var config = SculptConfig.default
+        config.partBlendRadius = 0
+        let head = circleStroke(center: CGPoint(x: 200, y: 100), radius: 35)
+        let body = circleStroke(center: CGPoint(x: 200, y: 190), radius: 60)
+        let mesh = ShapeInflater.inflate(strokes: [head, body], config: config)
+        XCTAssertFalse(mesh.isEmpty)
+        assertMeshValid(mesh)
     }
 
     /// Two circles drawn apart: one object, two shells — still a valid mesh.

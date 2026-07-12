@@ -27,6 +27,8 @@ final class PartExtractorTests: XCTestCase {
         XCTAssertEqual(parts.count, 1)
         XCTAssertEqual(parts[0].sourceStrokeID, stroke.id)
         XCTAssertGreaterThanOrEqual(parts[0].contour.count, 3)
+        // Pins the implicitly-closed contract: extraction must not append a closing point
+        XCTAssertEqual(parts[0].contour.count, stroke.points.count)
     }
 
     func testOpenLineIsNotAPart() {
