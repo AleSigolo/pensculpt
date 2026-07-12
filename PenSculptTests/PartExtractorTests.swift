@@ -69,4 +69,48 @@ final class PartExtractorTests: XCTestCase {
         XCTAssertEqual(parts.count, 1)
         XCTAssertEqual(parts[0].sourceStrokeID, closed.id)
     }
+
+    // MARK: - Loop cleanup (Task 2)
+
+    func testSmoothingPreservesPointCount() {
+        let loop = circlePoints(center: CGPoint(x: 100, y: 100), radius: 50)
+        let smoothed = PartExtractor.smoothed(loop, passes: 2)
+        XCTAssertEqual(smoothed.count, loop.count)
+    }
+
+    func testSmoothingReducesWobble() {
+        // Alternating ±6 radial jitter: the 1-2-1 kernel cancels it almost exactly
+        let center = CGPoint(x: 100, y: 100)
+        let steps = 64
+        let noisy = (0..<steps).map { i -> CGPoint in
+            let angle = 2 * CGFloat.pi * CGFloat(i) / CGFloat(steps)
+            let r: CGFloat = 50 + (i % 2 == 0 ? 6 : -6)
+            return CGPoint(x: center.x + r * cos(angle), y: center.y + r * sin(angle))
+        }
+        func maxDeviation(_ pts: [CGPoint]) -> CGFloat {
+            pts.map { abs(hypot($0.x - center.x, $0.y - center.y) - 50) }.max()!
+        }
+        let smoothed = PartExtractor.smoothed(noisy, passes: 2)
+        XCTAssertLessThan(maxDeviation(smoothed), maxDeviation(noisy) / 2,
+                          "Smoothing should at least halve alternating jitter")
+    }
+
+    func testSmoothedPartStillCloses() {
+        // A noisy near-closed circle must survive extraction with smoothing on
+        let center = CGPoint(x: 100, y: 100)
+        let noisy = (0...80).map { i -> CGPoint in
+            let angle = 2 * CGFloat.pi * 350 / 360 * CGFloat(i) / 80
+            let r: CGFloat = 50 + (i % 2 == 0 ? 4 : -4)
+            return CGPoint(x: center.x + r * cos(angle), y: center.y + r * sin(angle))
+        }
+        XCTAssertEqual(PartExtractor.parts(from: [makeStroke(points: noisy)]).count, 1)
+    }
+
+    func testOversizedLoopGetsSimplified() {
+        // 800-point circle exceeds contourMaxPoints (500) → Douglas–Peucker kicks in
+        let loop = circlePoints(center: CGPoint(x: 300, y: 300), radius: 100, steps: 800)
+        let parts = PartExtractor.parts(from: [makeStroke(points: loop)])
+        XCTAssertEqual(parts.count, 1)
+        XCTAssertLessThan(parts[0].contour.count, 500)
+    }
 }

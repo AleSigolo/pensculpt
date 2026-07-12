@@ -26,6 +26,9 @@ struct SculptConfig: Codable, Equatable, Sendable {
     /// Rejects back-and-forth scribbles that technically return to their start.
     var partMinArea: CGFloat = 100
 
+    /// Wrap-around Laplacian smoothing passes applied to each part loop.
+    var partSmoothingPasses: Int = 2
+
     /// Camera tilt angle in radians. Higher = more top-down view.
     var cameraTilt: Float = 0.8
 
