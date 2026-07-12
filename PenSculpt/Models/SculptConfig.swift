@@ -19,6 +19,13 @@ struct SculptConfig: Codable, Equatable, Sendable {
     /// Maximum contour points before simplification is applied.
     var contourMaxPoints: CGFloat = 500
 
+    /// A stroke is a closed part when its endpoint gap ≤ ratio × arc length.
+    var partClosureRatio: CGFloat = 0.2
+
+    /// Minimum |signed area| in pt² for a closed loop to count as a part.
+    /// Rejects back-and-forth scribbles that technically return to their start.
+    var partMinArea: CGFloat = 100
+
     /// Camera tilt angle in radians. Higher = more top-down view.
     var cameraTilt: Float = 0.8
 
