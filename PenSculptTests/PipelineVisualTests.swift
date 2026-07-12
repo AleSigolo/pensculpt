@@ -219,6 +219,34 @@ final class PipelineVisualTests: XCTestCase {
         runDiagnostic(name: "hand_vase", strokes: handDrawnVaseStrokes)
     }
 
+    // MARK: - Multi-part figure (closed-stroke person: head/body/arms/legs)
+
+    private var figureStrokes: [Stroke] {
+        func ellipse(cx: CGFloat, cy: CGFloat, rx: CGFloat, ry: CGFloat,
+                     steps: Int = 48) -> Stroke {
+            var points: [StrokePoint] = []
+            for i in 0...steps {
+                let angle = 2 * CGFloat.pi * CGFloat(i) / CGFloat(steps)
+                points.append(StrokePoint(
+                    location: CGPoint(x: cx + rx * cos(angle), y: cy + ry * sin(angle)),
+                    pressure: 1, tilt: 0, azimuth: 0, timestamp: CGFloat(i) * 0.01))
+            }
+            return Stroke(points: points)
+        }
+        return [
+            ellipse(cx: 300, cy: 200, rx: 60, ry: 60),    // head
+            ellipse(cx: 300, cy: 400, rx: 90, ry: 150),   // body (overlaps head at y≈250)
+            ellipse(cx: 195, cy: 380, rx: 25, ry: 90),    // left arm
+            ellipse(cx: 405, cy: 380, rx: 25, ry: 90),    // right arm
+            ellipse(cx: 260, cy: 610, rx: 30, ry: 80),    // left leg
+            ellipse(cx: 340, cy: 610, rx: 30, ry: 80),    // right leg
+        ]
+    }
+
+    func testVisualizeFigure() {
+        runDiagnostic(name: "figure", strokes: figureStrokes)
+    }
+
     func testCircleDepthRatio() {
         let strokes = handDrawnCircleStrokes
         let obj = ShapeInflater.sculpt(from: strokes)
