@@ -3,7 +3,7 @@ import Foundation
 /// A closed region extracted from a single stroke — one inflation part.
 /// The contour is an implicitly closed polygon (last→first edge implied),
 /// matching ShapeInflater.containsAndDistance's wrap-around convention.
-struct Part: Equatable {
+struct Part: Codable, Equatable, Sendable {
     var contour: [CGPoint]
     let sourceStrokeID: UUID
 }
