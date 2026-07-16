@@ -38,6 +38,14 @@ enum StrokeLifter {
     /// only depth comes from the nearby surface — so lift registration
     /// stays exact.
     ///
+    /// When the ring also fails, the point marches toward the STROKE'S OWN
+    /// centroid, up to `inwardRescue` (default 16pt): part contours can
+    /// shrink 8-16pt inside the drawn rim where smoothing bites hardest,
+    /// and without this the part's own source ink stays behind as flat
+    /// ghost ink while its volume rotates. The direction is derived from
+    /// the ink alone, so open decoration (a "Λ" ear whose centroid sits in
+    /// empty space) finds nothing and correctly stays flat.
+    ///
     /// No-ink-loss guarantee: commit DELETES lifted source strokes and
     /// replaces them with the bake of their surface segments — any point
     /// dropped here is user ink destroyed forever. A stroke only lifts when
@@ -49,13 +57,18 @@ enum StrokeLifter {
     static func lift(_ strokes: [Stroke], bvh: MeshBVH,
                      offset: Float, maxTJump: Float = 50,
                      missTolerance: Float = 8,
-                     minCoverage: Float = 0.95)
+                     minCoverage: Float = 0.95,
+                     inwardRescue: Float = 16)
         -> (lifted: [SurfaceStroke], unliftedStrokeIDs: Set<UUID>) {
         let direction = SIMD3<Float>(0, 0, -1)
         var lifted: [SurfaceStroke] = []
         var unliftedStrokeIDs: Set<UUID> = []
 
         for stroke in strokes {
+            let count = Float(stroke.points.count)
+            let centroid = stroke.points.reduce(SIMD2<Float>.zero) {
+                $0 + SIMD2(Float($1.location.x), Float(-$1.location.y))
+            } / max(count, 1)
             let segmentsBefore = lifted.count
             var liftedPointCount = 0
             var points: [SIMD3<Float>] = []
@@ -79,7 +92,9 @@ enum StrokeLifter {
                 let x = Float(sp.location.x)
                 let y = Float(-sp.location.y)
                 guard let t = raycastWithTolerance(x: x, y: y, bvh: bvh,
-                                                   tolerance: missTolerance) else {
+                                                   tolerance: missTolerance)
+                    ?? inwardMarchHit(x: x, y: y, toward: centroid, bvh: bvh,
+                                      maxDistance: inwardRescue) else {
                     flushSegment()
                     continue
                 }
@@ -124,6 +139,31 @@ enum StrokeLifter {
         zs = filtered(zs, window: 5) { $0.sorted()[$0.count / 2] }
         zs = filtered(zs, window: 3) { $0.reduce(0, +) / Float($0.count) }
         return zip(points, zs).map { SIMD3($0.x, $0.y, $1) }
+    }
+
+    /// Last-resort rescue after the ring fails: march from the ink position
+    /// toward the stroke's own centroid in 3pt steps, up to `maxDistance`,
+    /// and return the first hit distance. The hit only supplies DEPTH — the
+    /// lifted point keeps its canvas XY. Deterministic; direction comes from
+    /// the ink alone, so strokes whose interior holds no mesh (open
+    /// decoration) find nothing.
+    private static func inwardMarchHit(x: Float, y: Float, toward c: SIMD2<Float>,
+                                       bvh: MeshBVH, maxDistance: Float) -> Float? {
+        let toCentroid = c - SIMD2(x, y)
+        let length = simd_length(toCentroid)
+        guard length > 0.001, maxDistance > 0 else { return nil }
+        let step = toCentroid / length * 3
+        var p = SIMD2(x, y)
+        var traveled: Float = 3
+        while traveled <= maxDistance {
+            p += step
+            if let (t, _) = bvh.raycast(origin: SIMD3(p.x, p.y, 4096),
+                                        direction: SIMD3(0, 0, -1)) {
+                return t
+            }
+            traveled += 3
+        }
+        return nil
     }
 
     /// −z raycast at canvas-world (x, y); on a miss, retries in rings of

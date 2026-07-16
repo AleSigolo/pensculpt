@@ -146,12 +146,49 @@ final class StrokeLifterTests: XCTestCase {
         XCTAssertEqual(lifted[0].points[1].x, 4, accuracy: 0.01, "canvas XY never moves")
     }
 
-    func testLiftToleranceStillDropsClearMisses() {
-        // 10pt outside the mesh is beyond the hairline tolerance: the point
-        // stays dropped and its 1-point neighbours can't form segments.
+    func testLiftMarchesInwardForItsOwnPartRim() {
+        // A part-source stroke can deviate 8-16pt outside its inflated rim
+        // where the contour smoothing shrank hardest. The ring rescue can't
+        // reach that far, but the ink's own interior direction can: rim ink
+        // must march toward the stroke's centroid and ride its part instead
+        // of staying behind as flat ghost ink while the volume rotates.
+        let q = quad(xRange: 10...90)   // mesh: x 10...90, y 0...-100
+        let mesh = Mesh(vertices: q.vertices, faces: q.faces)
+        // Closed-ish loop around the mesh; left edge bulges to x = -2,
+        // 12pt outside the mesh (beyond the 8pt ring, within inward march).
+        let loop = [CGPoint(x: 50, y: 5), CGPoint(x: 88, y: 50),
+                    CGPoint(x: 50, y: 95), CGPoint(x: -2, y: 50),
+                    CGPoint(x: 50, y: 5)]
+        let stroke = makeStroke(loop)
+        let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
+
+        XCTAssertEqual(lifted.count, 1, "rim ink must ride its part")
+        XCTAssertTrue(unlifted.isEmpty)
+        XCTAssertEqual(lifted[0].points.count, loop.count)
+        XCTAssertEqual(lifted[0].points[3].x, -2, accuracy: 0.01,
+                       "canvas XY never moves — only depth comes from the surface")
+    }
+
+    func testLiftInwardMarchDoesNotGlueDistantDecoration() {
+        // A "Λ" ear far from any mesh: its centroid sits in empty space, so
+        // the inward march finds nothing and the stroke stays flat ink.
         let q = quad(xRange: 10...90)
         let mesh = Mesh(vertices: q.vertices, faces: q.faces)
-        let stroke = makeStroke([CGPoint(x: 12, y: 50), CGPoint(x: 0, y: 50),
+        let ear = makeStroke([CGPoint(x: 200, y: 300), CGPoint(x: 230, y: 240),
+                              CGPoint(x: 260, y: 300)])
+        let (lifted, unlifted) = lift([ear], onto: mesh, offset: 0.5)
+
+        XCTAssertTrue(lifted.isEmpty)
+        XCTAssertEqual(unlifted, [ear.id])
+    }
+
+    func testLiftToleranceStillDropsClearMisses() {
+        // 20pt outside the mesh is beyond the ring AND beyond what the
+        // inward march can reach: the point stays dropped, coverage falls
+        // below the threshold, and the whole stroke stays flat (preserved).
+        let q = quad(xRange: 10...90)
+        let mesh = Mesh(vertices: q.vertices, faces: q.faces)
+        let stroke = makeStroke([CGPoint(x: 12, y: 50), CGPoint(x: -10, y: 50),
                                  CGPoint(x: 14, y: 50)])
         let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
 
