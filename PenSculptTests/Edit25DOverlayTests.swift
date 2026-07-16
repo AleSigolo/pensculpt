@@ -21,11 +21,15 @@ final class Edit25DOverlayTests: XCTestCase {
         XCTAssertEqual(resolve(Set(ids), [obj])?.id, obj.id)
     }
 
-    func testSupersetSelectionResolves() {
-        // The lasso caught the shape plus a doodle beside it.
+    func testSupersetSelectionReinfersInsteadOfFoldingNewInkFlat() {
+        // The selection brings a NEW stroke beside the object. Re-entry
+        // never re-infers, so folding it in as a flat extra made it
+        // permanently un-inflatable (on-device: a freshly drawn circle next
+        // to an object could never rise). New ink must force fresh inference.
         let ids = [UUID(), UUID(), UUID()]
         let obj = object(with: ids)
-        XCTAssertEqual(resolve(Set(ids + [UUID()]), [obj])?.id, obj.id)
+        XCTAssertNil(resolve(Set(ids + [UUID()]), [obj]),
+                     "new ink in the selection must fall through to fresh inference")
     }
 
     func testSubsetSelectionResolves() {

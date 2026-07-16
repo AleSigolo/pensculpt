@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0347FE4C0A5E659D35D99CB3 /* SculptRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9BD3149A93DB238426BA43 /* SculptRenderer.swift */; };
+		0BF12210A850C6AE656578FB /* MultiPartLiftIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7E13C9C89B39E57E392EFFE /* MultiPartLiftIntegrationTests.swift */; };
 		0FCF1B2FAEC64E74ACA02935 /* SelectionConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A560D5B877B6E690F4527CF6 /* SelectionConfig.swift */; };
 		13FB513D2030412AF3F6E039 /* CanvasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7EF5FFBAD6BA4BDA5B94959 /* CanvasTests.swift */; };
 		16963C708BA78A1E8242E74F /* MeshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAA01BA6F67DEA8951302764 /* MeshTests.swift */; };
@@ -151,6 +152,7 @@
 		D117317B5B85BE21F914DD4D /* SculptObjectCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SculptObjectCodableTests.swift; sourceTree = "<group>"; };
 		D358202CD9A847A7AF8A7566 /* SmartSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartSelection.swift; sourceTree = "<group>"; };
 		D784B2CBE2E2D6AC9508A333 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
+		D7E13C9C89B39E57E392EFFE /* MultiPartLiftIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiPartLiftIntegrationTests.swift; sourceTree = "<group>"; };
 		DC097CDD13A4A13A9106C17A /* DrawingScreenReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawingScreenReconcileTests.swift; sourceTree = "<group>"; };
 		DE71A5ED22F5E547EDEA2FD7 /* PenSculptDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PenSculptDocumentTests.swift; sourceTree = "<group>"; };
 		E7EF5FFBAD6BA4BDA5B94959 /* CanvasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasTests.swift; sourceTree = "<group>"; };
@@ -293,6 +295,7 @@
 				AB850AA0D0B98D937FA1D8CF /* MetalCanvasViewTests.swift */,
 				77B810B9E273BFBDF719ACB7 /* MetalConventionTests.swift */,
 				523FCFDC278D92CF1A7969BB /* MultiPartInflationTests.swift */,
+				D7E13C9C89B39E57E392EFFE /* MultiPartLiftIntegrationTests.swift */,
 				625EBADE7F3667E25C62666F /* PartExtractorTests.swift */,
 				DE71A5ED22F5E547EDEA2FD7 /* PenSculptDocumentTests.swift */,
 				5AE4C922D541BA8953F39249 /* PenSculptTests.swift */,
@@ -416,6 +419,7 @@
 				DF626D4AAC989B114A0E217C /* MetalCanvasViewTests.swift in Sources */,
 				6AF8DF8C346657A8F75BA67B /* MetalConventionTests.swift in Sources */,
 				ADE337A3CD1AD0E18A966D2F /* MultiPartInflationTests.swift in Sources */,
+				0BF12210A850C6AE656578FB /* MultiPartLiftIntegrationTests.swift in Sources */,
 				5E68034057FF767A43C0DCE1 /* PartExtractorTests.swift in Sources */,
 				81BCDDE5A91629858020D77B /* PenSculptDocumentTests.swift in Sources */,
 				7E8452DD256CEFA004BEE546 /* PenSculptTests.swift in Sources */,

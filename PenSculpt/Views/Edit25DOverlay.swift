@@ -217,23 +217,30 @@ struct Edit25DOverlay: View {
     /// Resolves a selection to an existing sculpt object by sourceStrokeIDs
     /// OVERLAP (per the design spec), not exact set equality: real
     /// re-selections routinely differ by a stroke or two (the smart selector
-    /// clusters by proximity, a lasso grabs a doodle beside the shape), and
-    /// demanding equality silently downgraded almost every re-entry to a
-    /// fresh lift — re-inferring from already-baked ink and compounding
-    /// degradation on every rotate→bake→re-select cycle. Ties resolve to the
-    /// largest overlap, then the most recent object (stable for equal ids).
+    /// clusters by proximity), and demanding equality silently downgraded
+    /// almost every re-entry to a fresh lift — re-inferring from
+    /// already-baked ink and compounding degradation on every
+    /// rotate→bake→re-select cycle. Ties resolve to the largest overlap,
+    /// then the most recent object (stable for equal ids).
     ///
-    /// Only ink that actually rides the mesh identifies the object:
-    /// unlifted strokes are flat carried-through ink (a stray dot that once
-    /// shared a selection with the shape), and letting them match would
-    /// re-lift the whole object when the user selects just the stray.
+    /// Two guards bound the match:
+    /// - Only ink that actually RIDES the mesh identifies the object:
+    ///   unlifted strokes are flat carried-through ink, and letting them
+    ///   match would re-lift the whole object when the user selects just a
+    ///   stray dot.
+    /// - The selection must bring NO new ink (it must be a subset of the
+    ///   object's known strokes). Re-entry never re-infers, so folding new
+    ///   strokes in as flat extras made them permanently un-inflatable —
+    ///   on-device: a freshly drawn circle beside an object could never
+    ///   rise. New ink now falls through to a fresh inference of the whole
+    ///   selection; commit's orphan pruning retires the superseded object.
     nonisolated static func resolveSessionObject(selection: Set<UUID>,
                                                  objects: [SculptObject]) -> SculptObject? {
         objects.enumerated()
             .map { (index: $0, object: $1,
                     overlap: $1.sourceStrokeIDs.subtracting($1.unliftedStrokeIDs)
                         .intersection(selection).count) }
-            .filter { $0.overlap > 0 }
+            .filter { $0.overlap > 0 && selection.isSubset(of: $0.object.sourceStrokeIDs) }
             .max { ($0.overlap, $0.index) < ($1.overlap, $1.index) }?
             .object
     }
