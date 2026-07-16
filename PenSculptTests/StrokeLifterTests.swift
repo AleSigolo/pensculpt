@@ -129,6 +129,23 @@ final class StrokeLifterTests: XCTestCase {
         XCTAssertEqual(lifted[0].points[1].z, 5.5, accuracy: 0.01)
     }
 
+    func testLiftRescuesPartContourDeviation() {
+        // Multi-part contours are smoothed + simplified stroke centerlines:
+        // on real figures they sit 5-8pt inside the ink line over long
+        // stretches (a clean accepted circle lifted only 54% of its ink at
+        // 4pt tolerance). Ink 6pt outside the mesh must still lift.
+        let q = quad(xRange: 10...90)
+        let mesh = Mesh(vertices: q.vertices, faces: q.faces)
+        let stroke = makeStroke([CGPoint(x: 12, y: 50), CGPoint(x: 4, y: 50),
+                                 CGPoint(x: 14, y: 50)])
+        let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
+
+        XCTAssertEqual(lifted.count, 1, "6pt deviation must be rescued, not shredded")
+        XCTAssertTrue(unlifted.isEmpty)
+        XCTAssertEqual(lifted[0].points.count, 3)
+        XCTAssertEqual(lifted[0].points[1].x, 4, accuracy: 0.01, "canvas XY never moves")
+    }
+
     func testLiftToleranceStillDropsClearMisses() {
         // 10pt outside the mesh is beyond the hairline tolerance: the point
         // stays dropped and its 1-point neighbours can't form segments.

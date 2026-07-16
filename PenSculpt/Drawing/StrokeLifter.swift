@@ -28,13 +28,15 @@ enum StrokeLifter {
     /// instead of deleting them.
     ///
     /// A miss is retried within `missTolerance` points of the ink position
-    /// before splitting: the inflation contour is a simplified polygon that
-    /// dips inside the ink centerline on curves, so border ink grazes just
-    /// outside the silhouette and a strict cast shreds it into dropped
-    /// sub-2-point segments (dashed lift). The default is half the
-    /// rasterized contour ink width (`contourStrokeWidth` 8 / 2). Rescued
-    /// points keep their canvas XY — only depth comes from the nearby
-    /// surface — so lift registration stays exact.
+    /// before splitting: inflation contours are simplified polygons that dip
+    /// inside the ink centerline — Vision raster contours by a hair on
+    /// curves, and multi-part contours (smoothed + simplified stroke
+    /// centerlines) by 5–8pt over long stretches, which shredded even a
+    /// clean accepted circle to 54% ink coverage at the old 4pt default.
+    /// The default is the rasterized contour ink width
+    /// (`contourStrokeWidth`, 8). Rescued points keep their canvas XY —
+    /// only depth comes from the nearby surface — so lift registration
+    /// stays exact.
     ///
     /// No-ink-loss guarantee: commit DELETES lifted source strokes and
     /// replaces them with the bake of their surface segments — any point
@@ -46,7 +48,7 @@ enum StrokeLifter {
     /// neighboring part).
     static func lift(_ strokes: [Stroke], bvh: MeshBVH,
                      offset: Float, maxTJump: Float = 50,
-                     missTolerance: Float = 4,
+                     missTolerance: Float = 8,
                      minCoverage: Float = 0.95)
         -> (lifted: [SurfaceStroke], unliftedStrokeIDs: Set<UUID>) {
         let direction = SIMD3<Float>(0, 0, -1)
