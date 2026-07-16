@@ -283,6 +283,41 @@ final class StrokeLifterTests: XCTestCase {
         XCTAssertEqual(lifted[1].points[0].x, 70, accuracy: 0.01)
     }
 
+    func testBakeReunitesSegmentsOfTheSameSourceStroke() {
+        // A stroke that lifts split (mesh gap / t-jump) bakes back as ONE 2D
+        // stroke, not several invisibly "perforated" pieces — the vector
+        // eraser removes whole strokes, so hidden seams make a single touch
+        // erase only a fragment of what the user drew as one line.
+        let mesh = makeGappedMesh()
+        let left = stride(from: 2, through: 38, by: 2).map { CGPoint(x: CGFloat($0), y: 50) }
+        let right = stride(from: 62, through: 98, by: 2).map { CGPoint(x: CGFloat($0), y: 50) }
+        let stroke = makeStroke(left + [CGPoint(x: 50, y: 50)] + right)
+        let (lifted, _) = lift([stroke], onto: mesh, offset: 0.5)
+        XCTAssertEqual(lifted.count, 2, "fixture must produce a split lift")
+
+        let baked = StrokeLifter.bake(lifted, orientation: identity, scale: 1,
+                                      pivot: SIMD3(50, -50, 0))
+
+        XCTAssertEqual(baked.count, 1, "same-source segments must bake as one stroke")
+        XCTAssertEqual(baked[0].points.count, left.count + right.count)
+        XCTAssertEqual(baked[0].points.first?.location.x ?? 0, 2, accuracy: 0.1)
+        XCTAssertEqual(baked[0].points.last?.location.x ?? 0, 98, accuracy: 0.1)
+    }
+
+    func testBakeKeepsIndependentStrokesSeparate() {
+        // Segments with different origins (two pen strokes drawn on the
+        // mesh) must NOT be welded, even when their ends sit close.
+        let mesh = makeFlatMesh()
+        let a = makeStroke([CGPoint(x: 10, y: 50), CGPoint(x: 40, y: 50)])
+        let b = makeStroke([CGPoint(x: 44, y: 50), CGPoint(x: 80, y: 50)])
+        let (lifted, _) = lift([a, b], onto: mesh, offset: 0.5)
+        XCTAssertEqual(lifted.count, 2)
+
+        let baked = StrokeLifter.bake(lifted, orientation: identity, scale: 1,
+                                      pivot: SIMD3(50, -50, 0))
+        XCTAssertEqual(baked.count, 2)
+    }
+
     // MARK: - Bake
 
     func testBakeAtIdentityRoundTripsLift() {

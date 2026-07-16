@@ -81,7 +81,8 @@ enum StrokeLifter {
                     // and bake folds session opacity into it (never double-count).
                     lifted.append(SurfaceStroke(points: smoothedDepths(points),
                                                 widths: widths,
-                                                opacity: 1, color: stroke.color))
+                                                opacity: 1, color: stroke.color,
+                                                sourceStrokeID: stroke.id))
                     liftedPointCount += points.count
                 }
                 points = []
@@ -194,30 +195,69 @@ enum StrokeLifter {
         return nil
     }
 
+    /// Maximum 2D distance (points) between the end of one segment and the
+    /// start of the next for bake to weld same-source segments back into one
+    /// stroke. Generous enough for split-and-dropped spans (the ink WAS one
+    /// drawn line), small enough not to bridge spans the user erased
+    /// mid-session with the surface eraser.
+    static let bakeWeldGap: CGFloat = 24
+
     static func bake(_ surfaceStrokes: [SurfaceStroke], orientation: simd_quatf,
                      scale: Float, pivot: SIMD3<Float>) -> [Stroke] {
         let model = CameraTransform.modelMatrix(center: pivot, orientation: orientation,
                                                 scale: scale)
-        return surfaceStrokes.compactMap { ss in
-            guard !ss.points.isEmpty else { return nil }
-            let strokePoints = ss.points.enumerated().map { i, p -> StrokePoint in
+
+        // Project each segment; weld consecutive segments lifted from the
+        // same 2D stroke (lift splits at mesh gaps and depth jumps) whose
+        // ends land near each other — without this the seams persist as
+        // invisible "perforations" in the baked ink and a single vector-
+        // eraser touch removes only a fragment of the drawn line.
+        var result: [Stroke] = []
+        var pending: [(location: CGPoint, pressure: CGFloat)] = []
+        var pendingColor = CodableColor.black
+        var pendingLineage: UUID?
+
+        func flush() {
+            guard !pending.isEmpty else { return }
+            let strokePoints = pending.enumerated().map { i, p in
+                StrokePoint(location: p.location, pressure: p.pressure,
+                            tilt: .pi / 2, azimuth: 0,
+                            timestamp: TimeInterval(i) * 0.01)
+            }
+            result.append(Stroke(points: strokePoints, color: pendingColor))
+            pending = []
+            pendingLineage = nil
+        }
+
+        for ss in surfaceStrokes {
+            guard !ss.points.isEmpty else { continue }
+            let projected = ss.points.enumerated().map { i, p -> (CGPoint, CGFloat) in
                 let v = model * SIMD4<Float>(p.x, p.y, p.z, 1)
                 let width = i < ss.widths.count ? ss.widths[i] : widthPerPressure
-                return StrokePoint(
-                    location: CGPoint(x: CGFloat(v.x), y: CGFloat(-v.y)),
-                    // WYSIWYG: on screen the strip is scaled by the model
-                    // matrix, so the baked ink width is width × scale.
-                    pressure: CGFloat(width * scale / widthPerPressure),
-                    tilt: .pi / 2,
-                    azimuth: 0,
-                    timestamp: TimeInterval(i) * 0.01
-                )
+                // WYSIWYG: on screen the strip is scaled by the model
+                // matrix, so the baked ink width is width × scale.
+                return (CGPoint(x: CGFloat(v.x), y: CGFloat(-v.y)),
+                        CGFloat(width * scale / widthPerPressure))
             }
             // Fold session opacity into the color's alpha.
             let color = CodableColor(red: ss.color.red, green: ss.color.green,
                                      blue: ss.color.blue,
                                      alpha: ss.color.alpha * CGFloat(ss.opacity))
-            return Stroke(points: strokePoints, color: color)
+
+            let gap = pending.last.map {
+                hypot(projected[0].0.x - $0.location.x,
+                      projected[0].0.y - $0.location.y)
+            }
+            let welds = ss.sourceStrokeID != nil
+                && ss.sourceStrokeID == pendingLineage
+                && color == pendingColor
+                && (gap ?? .infinity) <= bakeWeldGap
+            if !welds { flush() }
+            pending.append(contentsOf: projected.map { (location: $0.0, pressure: $0.1) })
+            pendingColor = color
+            pendingLineage = ss.sourceStrokeID
         }
+        flush()
+        return result
     }
 }

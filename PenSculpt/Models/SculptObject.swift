@@ -7,14 +7,22 @@ struct SurfaceStroke: Identifiable, Codable, Equatable, Sendable {
     var widths: [Float]
     var opacity: Float
     var color: CodableColor
+    /// The 2D stroke this segment was lifted from (nil for ink drawn live
+    /// on the mesh). Lift can split one stroke into several segments; bake
+    /// uses this lineage to weld them back into ONE 2D stroke — otherwise
+    /// the seams persist as invisible "perforations" and the vector eraser
+    /// removes fragments of what the user drew as a single line.
+    var sourceStrokeID: UUID?
 
     init(id: UUID = UUID(), points: [SIMD3<Float>] = [], widths: [Float] = [],
-         opacity: Float = 1, color: CodableColor = .black) {
+         opacity: Float = 1, color: CodableColor = .black,
+         sourceStrokeID: UUID? = nil) {
         self.id = id
         self.points = points
         self.widths = widths
         self.opacity = opacity
         self.color = color
+        self.sourceStrokeID = sourceStrokeID
     }
 
     init(from decoder: Decoder) throws {
@@ -27,6 +35,7 @@ struct SurfaceStroke: Identifiable, Codable, Equatable, Sendable {
         // Pre-2.5D strokes were rendered hardcoded blue; preserve that look.
         color = try container.decodeIfPresent(CodableColor.self, forKey: .color)
             ?? CodableColor(red: 0.2, green: 0.2, blue: 0.8, alpha: 1)
+        sourceStrokeID = try container.decodeIfPresent(UUID.self, forKey: .sourceStrokeID)
     }
 }
 
@@ -51,7 +60,8 @@ extension SurfaceStroke {
 
         guard newPoints.count > 1 else { return nil }
         return SurfaceStroke(id: id, points: newPoints, widths: newWidths,
-                             opacity: opacity, color: color)
+                             opacity: opacity, color: color,
+                             sourceStrokeID: sourceStrokeID)
     }
 
     /// Möller–Trumbore cast accepting only faces whose geometric winding
