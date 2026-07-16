@@ -77,34 +77,37 @@ final class StrokeLifterTests: XCTestCase {
         XCTAssertEqual(lifted[0].opacity, 1, accuracy: 1e-6)
     }
 
-    func testLiftDropsPointsOffTheMesh() {
+    func testLiftDropsIsolatedOffMeshPoints() {
         let mesh = makeFlatMesh()
-        // Third point misses the 100×100 mesh entirely.
-        let stroke = makeStroke([CGPoint(x: 50, y: 50), CGPoint(x: 55, y: 55),
-                                 CGPoint(x: 500, y: 500)])
+        // One stray point far off the 100×100 mesh among 25 on it: the
+        // stray drops, the stroke still lifts (coverage stays above the
+        // no-ink-loss threshold).
+        let onMesh = stride(from: 2, through: 98, by: 4).map { CGPoint(x: CGFloat($0), y: 50) }
+        let stroke = makeStroke(onMesh + [CGPoint(x: 500, y: 500)])
         let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
         XCTAssertEqual(lifted.count, 1)
-        XCTAssertEqual(lifted[0].points.count, 2)
+        XCTAssertEqual(lifted[0].points.count, onMesh.count)
         XCTAssertTrue(unlifted.isEmpty)
     }
 
     func testLiftSplitsIntoSegmentsAcrossAGap() {
         let mesh = makeGappedMesh()
-        // Two points on the left quad, one in the gap, two on the right quad.
-        let stroke = makeStroke([CGPoint(x: 10, y: 50), CGPoint(x: 20, y: 50),
-                                 CGPoint(x: 50, y: 50),
-                                 CGPoint(x: 70, y: 50), CGPoint(x: 80, y: 50)])
+        // Dense runs on both quads, one point in the 40...60 gap; coverage
+        // stays high, so the stroke lifts split into two segments.
+        let left = stride(from: 2, through: 38, by: 2).map { CGPoint(x: CGFloat($0), y: 50) }
+        let right = stride(from: 62, through: 98, by: 2).map { CGPoint(x: CGFloat($0), y: 50) }
+        let stroke = makeStroke(left + [CGPoint(x: 50, y: 50)] + right)
         let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
 
         XCTAssertEqual(lifted.count, 2)
         XCTAssertTrue(unlifted.isEmpty)
         // No bridging chord: each segment holds only its own quad's points.
-        XCTAssertEqual(lifted[0].points.count, 2)
-        XCTAssertEqual(lifted[0].points[0].x, 10, accuracy: 0.01)
-        XCTAssertEqual(lifted[0].points[1].x, 20, accuracy: 0.01)
-        XCTAssertEqual(lifted[1].points.count, 2)
-        XCTAssertEqual(lifted[1].points[0].x, 70, accuracy: 0.01)
-        XCTAssertEqual(lifted[1].points[1].x, 80, accuracy: 0.01)
+        XCTAssertEqual(lifted[0].points.count, left.count)
+        XCTAssertEqual(lifted[0].points[0].x, 2, accuracy: 0.01)
+        XCTAssertEqual(lifted[0].points.last?.x ?? 0, 38, accuracy: 0.01)
+        XCTAssertEqual(lifted[1].points.count, right.count)
+        XCTAssertEqual(lifted[1].points[0].x, 62, accuracy: 0.01)
+        XCTAssertEqual(lifted[1].points.last?.x ?? 0, 98, accuracy: 0.01)
     }
 
     func testLiftRescuesHairlineMissesNearTheSilhouette() {
@@ -137,6 +140,39 @@ final class StrokeLifterTests: XCTestCase {
 
         XCTAssertTrue(lifted.isEmpty)
         XCTAssertEqual(unlifted, [stroke.id])
+    }
+
+    // MARK: - No-ink-loss guarantee
+
+    func testPartiallyCoveredStrokeStaysFlatInsteadOfLosingInk() {
+        // Half the stroke crosses the mesh, half extends far beyond it (a
+        // rejected part's ink grazing a neighboring part). Lifting only the
+        // covered half would DELETE the rest at commit — the original is
+        // replaced by the partial projection. Below the coverage threshold
+        // the whole stroke must stay flat (reported unlifted), preserved.
+        let mesh = makeFlatMesh()   // spans x 0...100
+        let onMesh = stride(from: 10, through: 90, by: 10).map { CGPoint(x: CGFloat($0), y: 50) }
+        let offMesh = stride(from: 300, through: 380, by: 10).map { CGPoint(x: CGFloat($0), y: 50) }
+        let stroke = makeStroke(onMesh + offMesh)   // 9 on + 9 off = 50% coverage
+        let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
+
+        XCTAssertTrue(lifted.isEmpty,
+                      "a half-covered stroke must not ride the mesh partially")
+        XCTAssertEqual(unlifted, [stroke.id],
+                       "it must be reported unlifted so commit preserves it")
+    }
+
+    func testNearFullCoverageStillLifts() {
+        // Losing a couple of feather-tip points is fine — only meaningful
+        // partial coverage should demote a stroke to flat ink.
+        let mesh = makeFlatMesh()
+        let onMesh = stride(from: 2, through: 98, by: 2).map { CGPoint(x: CGFloat($0), y: 50) }
+        let stroke = makeStroke(onMesh + [CGPoint(x: 400, y: 400)])   // 49/50 = 98%
+        let (lifted, unlifted) = lift([stroke], onto: mesh, offset: 0.5)
+
+        XCTAssertEqual(lifted.count, 1)
+        XCTAssertTrue(unlifted.isEmpty)
+        XCTAssertEqual(lifted[0].points.count, 49)
     }
 
     func testLiftSmoothsDepthSpikesFromSilhouetteCliffs() {

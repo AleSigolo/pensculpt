@@ -35,16 +35,27 @@ enum StrokeLifter {
     /// rasterized contour ink width (`contourStrokeWidth` 8 / 2). Rescued
     /// points keep their canvas XY — only depth comes from the nearby
     /// surface — so lift registration stays exact.
+    ///
+    /// No-ink-loss guarantee: commit DELETES lifted source strokes and
+    /// replaces them with the bake of their surface segments — any point
+    /// dropped here is user ink destroyed forever. A stroke only lifts when
+    /// at least `minCoverage` of its points landed on the mesh; below that
+    /// its partial segments are discarded and the stroke is reported
+    /// unlifted, so it stays visible flat ink and survives commit untouched
+    /// (multi-part meshes routinely leave rejected-part ink half-covering a
+    /// neighboring part).
     static func lift(_ strokes: [Stroke], bvh: MeshBVH,
                      offset: Float, maxTJump: Float = 50,
-                     missTolerance: Float = 4)
+                     missTolerance: Float = 4,
+                     minCoverage: Float = 0.95)
         -> (lifted: [SurfaceStroke], unliftedStrokeIDs: Set<UUID>) {
         let direction = SIMD3<Float>(0, 0, -1)
         var lifted: [SurfaceStroke] = []
         var unliftedStrokeIDs: Set<UUID> = []
 
         for stroke in strokes {
-            var producedSegment = false
+            let segmentsBefore = lifted.count
+            var liftedPointCount = 0
             var points: [SIMD3<Float>] = []
             var widths: [Float] = []
             var lastT: Float = 0
@@ -56,7 +67,7 @@ enum StrokeLifter {
                     lifted.append(SurfaceStroke(points: smoothedDepths(points),
                                                 widths: widths,
                                                 opacity: 1, color: stroke.color))
-                    producedSegment = true
+                    liftedPointCount += points.count
                 }
                 points = []
                 widths = []
@@ -79,7 +90,12 @@ enum StrokeLifter {
             }
             flushSegment()
 
-            if !producedSegment { unliftedStrokeIDs.insert(stroke.id) }
+            let coverage = stroke.points.isEmpty
+                ? 0 : Float(liftedPointCount) / Float(stroke.points.count)
+            if lifted.count == segmentsBefore || coverage < minCoverage {
+                lifted.removeSubrange(segmentsBefore...)
+                unliftedStrokeIDs.insert(stroke.id)
+            }
         }
         return (lifted, unliftedStrokeIDs)
     }
