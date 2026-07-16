@@ -261,16 +261,13 @@ struct Edit25DOverlay: View {
             activeObjectID = match.id
             // Hide the object's whole lifted ink (even ink the selection
             // missed — commit rebakes all of it, so leaving it visible would
-            // desync the stores). Keep visible: strokes that never lifted
-            // (persisted on the object) AND selected strokes that don't
-            // belong to the object — both stay ordinary flat ink and carry
-            // through commit untouched (commit also folds them into the
-            // object's next identity, so selecting the same group again
-            // re-enters even more reliably).
+            // desync the stores). Strokes that never lifted stay ordinary
+            // flat ink and carry through commit untouched.
             onSourceStrokesResolved(
                 match.sourceStrokeIDs.subtracting(match.unliftedStrokeIDs),
-                match.unliftedStrokeIDs.union(strokeIDs.subtracting(match.sourceStrokeIDs))
+                match.unliftedStrokeIDs
             )
+            secondChanceLift(for: match)
             return
         }
 
@@ -310,6 +307,38 @@ struct Edit25DOverlay: View {
                 isInferring = false
                 onSourceStrokesResolved(strokeIDs.subtracting(lift.unliftedStrokeIDs),
                                         lift.unliftedStrokeIDs)
+            }
+        }
+    }
+
+    /// Re-entry reuses the object's stored state and never re-runs the lift,
+    /// so ink recorded as unlifted by an OLDER session stays fossil-flat
+    /// forever — even when today's rescue logic could land it (on-device: a
+    /// circle's bare volume rotating while its rim ink sat behind, in
+    /// documents created before the lift fixes). Re-try just the flat
+    /// strokes against the stored mesh off-main; whatever lifts is promoted
+    /// onto the object and its PK ink hidden incrementally.
+    private func secondChanceLift(for match: SculptObject) {
+        let flat = sourceStrokes.filter { match.unliftedStrokeIDs.contains($0.id) }
+        guard !flat.isEmpty else { return }
+        let mesh = match.mesh
+        let cfg = config
+        let objID = match.id
+        Task.detached {
+            let bvh = MeshBVH(mesh: mesh)
+            let second = StrokeLifter.lift(flat, bvh: bvh,
+                                           offset: cfg.surfaceStrokeOffset)
+            let promoted = Set(flat.map(\.id)).subtracting(second.unliftedStrokeIDs)
+            guard !promoted.isEmpty else { return }
+            await MainActor.run {
+                // The session may have committed or been invalidated while
+                // the lift ran; promoting into a finished session would hide
+                // ink with no one left to bake or restore it.
+                guard activeObjectID == objID,
+                      let idx = sculptObjects.firstIndex(where: { $0.id == objID }) else { return }
+                sculptObjects[idx].surfaceStrokes.append(contentsOf: second.lifted)
+                sculptObjects[idx].unliftedStrokeIDs.subtract(promoted)
+                onSourceStrokesResolved(promoted, sculptObjects[idx].unliftedStrokeIDs)
             }
         }
     }

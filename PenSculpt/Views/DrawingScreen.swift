@@ -328,23 +328,31 @@ struct DrawingScreen: View {
     /// untouched. canvas.strokes keeps the originals until commit.
     private func handleSourceStrokesResolved(_ hidden: Set<UUID>, _ unlifted: Set<UUID>) {
         unliftedSourceIDs = unlifted
-        // After the hide below, pkDrawing is no longer index-parallel with
-        // canvas.strokes, so a spurious second report must not re-pair
-        // indices. (The overlay reports exactly once per session.)
-        guard hiddenPKStrokes.isEmpty else { return }
-        let liftedIDs = hidden
-        guard !liftedIDs.isEmpty else { return }
-        var kept: [PKStroke] = []
-        var removed: [(index: Int, id: UUID, stroke: PKStroke)] = []
-        for (i, pk) in pkDrawing.strokes.enumerated() {
-            if i < vm.canvas.strokes.count, liftedIDs.contains(vm.canvas.strokes[i].id) {
-                removed.append((index: i, id: vm.canvas.strokes[i].id, stroke: pk))
-            } else {
-                kept.append(pk)
+        // Incremental: the overlay can report twice per session — once when
+        // the mesh mounts and again when a second-chance lift promotes
+        // fossil flat ink (recorded unlifted by older builds) onto the mesh.
+        // Already-hidden ids keep their original bookkeeping; new ids are
+        // located in the CURRENT pkDrawing through the parity math (the
+        // visible store already lacks the earlier-hidden strokes).
+        let alreadyHidden = Set(hiddenPKStrokes.map(\.id))
+        let newHidden = hidden.subtracting(alreadyHidden)
+        guard !newHidden.isEmpty else { return }
+        let stillHidden = hiddenPKStrokes.map(\.index)
+        var additions: [(canvasIndex: Int, pkIndex: Int, id: UUID)] = []
+        for (ci, stroke) in vm.canvas.strokes.enumerated() where newHidden.contains(stroke.id) {
+            let pkIdx = Self.parityInsertionIndex(originalIndex: ci,
+                                                  stillHiddenOriginalIndices: stillHidden)
+            if pkIdx < pkDrawing.strokes.count {
+                additions.append((canvasIndex: ci, pkIndex: pkIdx, id: stroke.id))
             }
         }
-        hiddenPKStrokes = removed
-        pkDrawing = PKDrawing(strokes: kept)
+        guard !additions.isEmpty else { return }
+        var pkStrokes = pkDrawing.strokes
+        for a in additions.sorted(by: { $0.pkIndex > $1.pkIndex }) {
+            hiddenPKStrokes.append((index: a.canvasIndex, id: a.id,
+                                    stroke: pkStrokes.remove(at: a.pkIndex)))
+        }
+        pkDrawing = PKDrawing(strokes: pkStrokes)
     }
 
     /// Snapshot pre-session state. The selection's PK ink intentionally
