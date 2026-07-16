@@ -266,6 +266,14 @@ struct DrawingScreen: View {
             guard index < vm.canvas.strokes.count else { continue }
             let stroke = vm.canvas.strokes[index]
             vm.removeStroke(id: stroke.id)
+            // Erasing ink that belongs to a sculpt object invalidates the
+            // object: its mesh still holds the erased part's volume and its
+            // surfaceStrokes still hold the erased 3D ink, so the next
+            // re-entry + bake would RESURRECT the erased strokes (on-device:
+            // erased circles came back, volumes included). Dissolve the
+            // object — its remaining baked ink stays ordinary flat ink and
+            // re-infers fresh on the next selection.
+            sculptObjects.removeAll { $0.sourceStrokeIDs.contains(stroke.id) }
             undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
                 // Mid-session, pkDrawing intentionally lacks the hidden
                 // (lifted) ink, so draw-mode closures must not fire: re-adding
@@ -487,6 +495,7 @@ struct DrawingScreen: View {
         unliftedSourceIDs = []
         preSessionObjects = []
         withAnimation(.easeInOut(duration: 0.2)) { vm.exitEditMode() }
+
 
         undoManager?.registerUndo(withTarget: UndoProxy.shared) { _ in
             // An open session's bookkeeping (hidden ink, pre-session
