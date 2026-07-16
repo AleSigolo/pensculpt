@@ -22,6 +22,24 @@ struct SculptConfig: Codable, Equatable, Sendable {
     /// A stroke is a closed part when its endpoint gap ≤ ratio × arc length.
     var partClosureRatio: CGFloat = 0.2
 
+    /// Absolute endpoint-gap tolerance (points): small gaps read as closed
+    /// regardless of the ratio — hand-drawn shapes by the target audience
+    /// (kids) rarely close within 20% on small figures.
+    var partClosureAbsolute: CGFloat = 30
+
+    /// Shape-relative gap tolerance: a gap ≤ this fraction of the stroke's
+    /// bounding-box diagonal reads as closed. Catches hook-shaped limbs
+    /// whose mouth is wide in arc terms but small next to the shape itself;
+    /// calibrated so a half-circle (gap = diameter ≈ 0.9 × diagonal) stays
+    /// open.
+    var partClosureBBoxRatio: CGFloat = 0.5
+
+    /// An open stroke whose BOTH endpoints rest within this distance of a
+    /// closed part's contour is an anchored appendage (a "Λ" horn on a
+    /// head): it closes with its implicit end-to-end edge and inflates as a
+    /// part, unioned into the host by the smooth-max blend.
+    var partAnchorTolerance: CGFloat = 24
+
     /// Minimum |signed area| in pt² for a closed loop to count as a part.
     /// Rejects back-and-forth scribbles that technically return to their start.
     var partMinArea: CGFloat = 100
