@@ -72,6 +72,69 @@ final class PartExtractorTests: XCTestCase {
         XCTAssertEqual(parts[0].sourceStrokeID, closed.id)
     }
 
+    // MARK: - Child-friendly closure (anchored appendages)
+
+    func testSmallAbsoluteGapClosesEvenWhenRatioRejects() {
+        // 270° of an r=20 circle: gap ≈ 28pt, arc ≈ 94 → ratio limit ≈ 19
+        // rejects, but a ~28pt gap on a hand-drawn shape reads as closed to
+        // the target user (an 8-year-old). The absolute tolerance accepts it.
+        let stroke = makeStroke(points: circlePoints(
+            center: CGPoint(x: 100, y: 100), radius: 20,
+            sweep: 2 * CGFloat.pi * 270 / 360))
+        XCTAssertEqual(PartExtractor.parts(from: [stroke]).count, 1)
+    }
+
+    func testAnchoredOpenAppendageBecomesPart() {
+        // A "Λ" horn leaning on a closed head — the natural way appendages
+        // are drawn. Both endpoints rest on the head's ink, so the appendage
+        // closes with its implicit end-to-end edge and inflates as a part
+        // (smooth-max union blends it into the host).
+        let head = makeStroke(points: circlePoints(center: CGPoint(x: 150, y: 150), radius: 60))
+        let horn = makeStroke(points: [CGPoint(x: 120, y: 100), CGPoint(x: 135, y: 60),
+                                       CGPoint(x: 150, y: 30), CGPoint(x: 165, y: 60),
+                                       CGPoint(x: 180, y: 100)])
+        let parts = PartExtractor.parts(from: [head, horn])
+        XCTAssertEqual(parts.count, 2, "the anchored horn must become a part")
+        XCTAssertTrue(parts.contains { $0.sourceStrokeID == horn.id })
+    }
+
+    func testFloatingOpenAppendageStaysDecoration() {
+        // The same Λ far from any ink: nothing anchors it — stays flat.
+        let head = makeStroke(points: circlePoints(center: CGPoint(x: 150, y: 150), radius: 60))
+        let lambda = makeStroke(points: [CGPoint(x: 500, y: 400), CGPoint(x: 530, y: 330),
+                                         CGPoint(x: 560, y: 400)])
+        let parts = PartExtractor.parts(from: [head, lambda])
+        XCTAssertEqual(parts.count, 1)
+        XCTAssertEqual(parts[0].sourceStrokeID, head.id)
+    }
+
+    func testHookShapedLegClosesLikeItsAlmostClosedSister() {
+        // On-device: two detached leg strokes beside a body — one nearly
+        // closed (inflated), one a hook whose endpoints sit ~60pt apart
+        // (stayed flat). Visually both read as legs; the deciding geometry
+        // is invisible to the user. A gap that is small relative to the
+        // SHAPE'S SIZE (bounding-box diagonal) must close.
+        let leg = makeStroke(points: [
+            CGPoint(x: 100, y: 100), CGPoint(x: 55, y: 160), CGPoint(x: 50, y: 230),
+            CGPoint(x: 80, y: 290), CGPoint(x: 140, y: 310), CGPoint(x: 195, y: 285),
+            CGPoint(x: 215, y: 230), CGPoint(x: 210, y: 180), CGPoint(x: 200, y: 140),
+        ])
+        // gap ≈ 108, arc ≈ 480 → ratio limit 96 rejects, absolute 30
+        // rejects; bbox 165×210 → diag ≈ 267, 0.5·diag ≈ 133 → closes.
+        XCTAssertEqual(PartExtractor.parts(from: [leg]).count, 1,
+                       "a hook-shaped leg must close by shape-relative gap")
+    }
+
+    func testSingleEndTouchingLineIsNotAPart() {
+        // A tail drawn as one line, only one end on the host: no closed
+        // region exists (and its area is ~zero) — stays decoration for now.
+        let head = makeStroke(points: circlePoints(center: CGPoint(x: 150, y: 150), radius: 60))
+        let tail = makeStroke(points: [CGPoint(x: 150, y: 92), CGPoint(x: 150, y: 60),
+                                       CGPoint(x: 150, y: 20)])
+        let parts = PartExtractor.parts(from: [head, tail])
+        XCTAssertEqual(parts.count, 1)
+    }
+
     // MARK: - Loop cleanup (Task 2)
 
     func testSmoothingPreservesPointCount() {
