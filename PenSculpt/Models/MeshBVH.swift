@@ -7,6 +7,11 @@ struct MeshBVH {
     private var faceIndices: [Int] = []
     private let positions: [SIMD3<Float>]
     private let faceData: [SIMD3<UInt32>]
+    /// Face centroids, needed by the split step at every level. Computed once
+    /// up front and dropped when the build finishes: recomputing them inside
+    /// the sort comparator (three position lookups and a vector add, per
+    /// comparison) was the single biggest cost in tree construction.
+    private var centroids: [SIMD3<Float>] = []
 
     private static let maxLeafSize = 8
 
@@ -24,8 +29,14 @@ struct MeshBVH {
         faceData = mesh.faces.map(\.indices)
         faceIndices = Array(0..<faceData.count)
         guard !faceData.isEmpty else { return }
-        nodes.reserveCapacity(faceData.count / 2)
+        centroids = faceData.map { f in
+            (positions[Int(f.x)] + positions[Int(f.y)] + positions[Int(f.z)]) / 3
+        }
+        // A median-split tree over leaves of maxLeafSize has ~2n/maxLeafSize
+        // nodes; the old n/2 estimate under-reserved and forced regrowth.
+        nodes.reserveCapacity(2 * (faceData.count / Self.maxLeafSize + 1))
         _ = buildNode(start: 0, end: faceData.count)
+        centroids = []
     }
 
     // MARK: - Build
@@ -39,11 +50,13 @@ struct MeshBVH {
         var hi = SIMD3<Float>(repeating: -Float.infinity)
         for i in start..<end {
             let f = faceData[faceIndices[i]]
-            for vi in [f.x, f.y, f.z] {
-                let p = positions[Int(vi)]
-                lo = simd_min(lo, p)
-                hi = simd_max(hi, p)
-            }
+            // Unrolled deliberately: `for vi in [f.x, f.y, f.z]` heap-allocates
+            // an array per face, at every level of the tree.
+            let p0 = positions[Int(f.x)]
+            let p1 = positions[Int(f.y)]
+            let p2 = positions[Int(f.z)]
+            lo = simd_min(lo, simd_min(p0, simd_min(p1, p2)))
+            hi = simd_max(hi, simd_max(p0, simd_max(p1, p2)))
         }
         // Expand bounds by epsilon so triangles on AABB boundaries are not
         // missed when ray direction has zero components (0 * inf = NaN in slab test).
@@ -66,7 +79,7 @@ struct MeshBVH {
         else { axis = 2 }
 
         let mid = (start + end) / 2
-        sortRange(start: start, end: end, axis: axis)
+        partitionAroundMedian(start: start, end: end, mid: mid, axis: axis)
 
         let leftIdx = buildNode(start: start, end: mid)
         let rightIdx = buildNode(start: mid, end: end)
@@ -76,14 +89,30 @@ struct MeshBVH {
         return nodeIdx
     }
 
-    private mutating func sortRange(start: Int, end: Int, axis: Int) {
-        let faces = faceData
-        let pos = positions
-        faceIndices[start..<end].sort { a, b in
-            let fa = faces[a], fb = faces[b]
-            let ca = (pos[Int(fa.x)] + pos[Int(fa.y)] + pos[Int(fa.z)])[axis]
-            let cb = (pos[Int(fb.x)] + pos[Int(fb.y)] + pos[Int(fb.z)])[axis]
-            return ca < cb
+    /// Quickselect (nth_element): rearranges `start..<end` so that everything
+    /// below `mid` compares no greater on `axis` than everything above it, and
+    /// nothing more. That is exactly what the median split consumes — the two
+    /// children only ever ask "which side is this face on", never "what is its
+    /// rank". Fully sorting each range instead spent O(n log n) per node
+    /// answering an O(n) question, at every level of the tree.
+    private mutating func partitionAroundMedian(start: Int, end: Int, mid: Int, axis: Int) {
+        var lo = start, hi = end - 1
+        while lo < hi {
+            let pivot = centroids[faceIndices[(lo + hi) / 2]][axis]
+            var i = lo, j = hi
+            while i <= j {
+                while centroids[faceIndices[i]][axis] < pivot { i += 1 }
+                while centroids[faceIndices[j]][axis] > pivot { j -= 1 }
+                if i <= j {
+                    faceIndices.swapAt(i, j)
+                    i += 1
+                    j -= 1
+                }
+            }
+            // Recurse only into the side that still contains `mid`.
+            if mid <= j { hi = j }
+            else if mid >= i { lo = i }
+            else { break }
         }
     }
 
