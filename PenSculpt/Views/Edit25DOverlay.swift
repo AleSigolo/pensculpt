@@ -45,6 +45,16 @@ struct Edit25DOverlay: View {
     @State private var inferenceTask: Task<Void, Never>?
     @Environment(\.undoManager) private var undoManager
 
+    /// The session's live object, once inference (or re-entry) resolved it.
+    /// Every tool in the HUD acts on a mesh, so the HUD mounts only when
+    /// this is non-nil: during a fresh lift's inference window the user
+    /// would otherwise get deform/erase/rotate/commit buttons hovering over
+    /// still-flat ink, with nothing to act on.
+    private var activeObject: SculptObject? {
+        guard let id = activeObjectID else { return nil }
+        return sculptObjects.first(where: { $0.id == id })
+    }
+
     var body: some View {
         ZStack {
             if let objectID = activeObjectID,
@@ -89,6 +99,16 @@ struct Edit25DOverlay: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
             }
         }
+        // The HUD below hangs on this ZStack through .overlay, and an
+        // overlay aligns to its HOST's bounds. Until the mesh mounts, the
+        // only child here is the "Lifting…" spinner — so without a claimed
+        // frame the ZStack measures ~150x110pt at the screen's bottom and
+        // every control aligns to THAT: the bottomTrailing tools landed on
+        // top of the brush sliders (stealing their taps) and the topTrailing
+        // commit/expand pair was pushed clean off the bottom edge by its
+        // 96pt nav-bar padding. Claiming the full frame keeps each control
+        // in its own corner from the first frame on.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay {
             if let cursor = deformCursor {
                 Circle()
@@ -100,7 +120,42 @@ struct Edit25DOverlay: View {
                     .allowsHitTesting(false)
             }
         }
-        .overlay(alignment: .topTrailing) {
+        .overlay(alignment: .topTrailing) { sessionActions }
+        .overlay(alignment: .bottom) { brushHUD }
+        .overlay(alignment: .bottomLeading) { rotateHUD }
+        .overlay(alignment: .bottomTrailing) { toolHUD }
+        .onReceive(NotificationCenter.default.publisher(for: .pencilDoubleTap)) { _ in
+            if isDeformMode { isSmoothMode.toggle() } else { isEraseStrokeMode.toggle() }
+        }
+        .fullScreenCover(isPresented: $showFullSculpt, onDismiss: refreshRendererAfterExpand) {
+            if !sourceStrokes.isEmpty {
+                SculptScreen(strokes: sourceStrokes, sculptObjects: $sculptObjects)
+            }
+        }
+        .onChange(of: sculptObjects) { _, newObjects in
+            // An undo of an earlier commit restores sculptObjects wholesale and
+            // can delete this session's object out from under it. The undo also
+            // restored canvas/pkDrawing as a consistent pair, so the host must
+            // tear down WITHOUT re-inserting the session's hidden ink (the
+            // cancel path would duplicate it) — hence not onInferenceFailed().
+            guard let id = activeObjectID, !isInferring,
+                  !newObjects.contains(where: { $0.id == id }) else { return }
+            onSessionInvalidated()
+        }
+        .onAppear(perform: startSession)
+        .onDisappear { inferenceTask?.cancel() }
+    }
+
+    // MARK: - HUD
+    //
+    // Every one of these gates on `activeObject`: during a fresh lift's
+    // inference window there is no mesh for them to act on, and mounting
+    // them anyway put live controls over still-flat ink (the deform toggle
+    // sat on the opacity slider and swallowed its drags).
+
+    @ViewBuilder
+    private var sessionActions: some View {
+        if activeObject != nil {
             HStack(spacing: 12) {
                 Button {
                     // The post-commit window (activeObjectID latched to nil)
@@ -113,7 +168,6 @@ struct Edit25DOverlay: View {
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.secondary)
                 }
-                .disabled(activeObjectID == nil)
 
                 Button(action: commit) {
                     Image(systemName: "checkmark.circle.fill")
@@ -121,7 +175,6 @@ struct Edit25DOverlay: View {
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.blue)
                 }
-                .disabled(activeObjectID == nil)
             }
             // The overlay ignores safe areas, and the document nav bar
             // (owned by DocumentGroup — SwiftUI's toolbar(.hidden) doesn't
@@ -131,7 +184,11 @@ struct Edit25DOverlay: View {
             .padding(.trailing, 16)
             .padding(.top, 96)
         }
-        .overlay(alignment: .bottom) {
+    }
+
+    @ViewBuilder
+    private var brushHUD: some View {
+        if activeObject != nil {
             BrushControls(brushSize: $brushSize, brushOpacity: $brushOpacity,
                           isDeformMode: isDeformMode)
                 .padding(.horizontal, 16)
@@ -139,7 +196,11 @@ struct Edit25DOverlay: View {
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                 .padding(.bottom, 20)
         }
-        .overlay(alignment: .bottomLeading) {
+    }
+
+    @ViewBuilder
+    private var rotateHUD: some View {
+        if activeObject != nil {
             Image(systemName: isRotateMode ? "rotate.3d.fill" : "rotate.3d")
                 .font(.title)
                 .foregroundStyle(isRotateMode ? .blue : .secondary)
@@ -152,7 +213,11 @@ struct Edit25DOverlay: View {
                 )
                 .padding(20)
         }
-        .overlay(alignment: .bottomTrailing) {
+    }
+
+    @ViewBuilder
+    private var toolHUD: some View {
+        if activeObject != nil {
             HStack(spacing: 12) {
                 Button {
                     if isDeformMode { isSmoothMode.toggle() } else { isEraseStrokeMode.toggle() }
@@ -186,26 +251,6 @@ struct Edit25DOverlay: View {
             }
             .padding(20)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .pencilDoubleTap)) { _ in
-            if isDeformMode { isSmoothMode.toggle() } else { isEraseStrokeMode.toggle() }
-        }
-        .fullScreenCover(isPresented: $showFullSculpt, onDismiss: refreshRendererAfterExpand) {
-            if !sourceStrokes.isEmpty {
-                SculptScreen(strokes: sourceStrokes, sculptObjects: $sculptObjects)
-            }
-        }
-        .onChange(of: sculptObjects) { _, newObjects in
-            // An undo of an earlier commit restores sculptObjects wholesale and
-            // can delete this session's object out from under it. The undo also
-            // restored canvas/pkDrawing as a consistent pair, so the host must
-            // tear down WITHOUT re-inserting the session's hidden ink (the
-            // cancel path would duplicate it) — hence not onInferenceFailed().
-            guard let id = activeObjectID, !isInferring,
-                  !newObjects.contains(where: { $0.id == id }) else { return }
-            onSessionInvalidated()
-        }
-        .onAppear(perform: startSession)
-        .onDisappear { inferenceTask?.cancel() }
     }
 
     // MARK: - Session lifecycle
